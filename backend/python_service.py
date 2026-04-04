@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from rag.retriever import build_context, get_stock_data
 from model.inference import generate_response
 
-app = FastAPI(title="Finance AI - Python Service")
+app = FastAPI(title="Quantiq - Python Service")
 
 
 class ContextRequest(BaseModel):

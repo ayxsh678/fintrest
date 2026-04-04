@@ -89,7 +89,7 @@ func main() {
 
 	// Health check
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "Finance AI is running 🚀"})
+		c.JSON(http.StatusOK, gin.H{"status": "Quantiq is running 🚀"})
 	})
 
 	// POST /ask
