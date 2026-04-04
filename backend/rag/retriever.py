@@ -1,18 +1,33 @@
 import yfinance as yf
 import requests
 import os
-from datetime import datetime, timedelta
+import re
 
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 
-# ── Stock Price Data ───────────────────────────────────
+# ── Company name to ticker mapping ─────────────────────
+COMPANY_MAP = {
+    "apple": "AAPL", "tesla": "TSLA", "google": "GOOGL",
+    "alphabet": "GOOGL", "microsoft": "MSFT", "amazon": "AMZN",
+    "meta": "META", "facebook": "META", "nvidia": "NVDA",
+    "netflix": "NFLX", "jpmorgan": "JPM", "jp morgan": "JPM",
+    "bank of america": "BAC", "walmart": "WMT", "visa": "V",
+    "mastercard": "MA", "reliance": "RELIANCE.NS",
+    "berkshire": "BRK-B", "tata": "TCS.NS", "infosys": "INFY",
+}
+
+KNOWN_TICKERS = set(COMPANY_MAP.values()) | {
+    "AAPL","TSLA","GOOGL","MSFT","AMZN","META","NVDA",
+    "NFLX","JPM","BAC","WMT","V","MA","INFY","TCS"
+}
+
+# ── Stock Price Data ────────────────────────────────────
 def get_stock_data(ticker: str) -> str:
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
         hist = stock.history(period="5d")
-
         return f"""
 Stock: {info.get('longName', ticker)} ({ticker})
 Current Price: ${info.get('currentPrice', 'N/A')}
@@ -28,7 +43,7 @@ Dividend Yield: {info.get('dividendYield', 'N/A')}
     except Exception as e:
         return f"Stock data unavailable for {ticker}: {str(e)}"
 
-# ── Financial News ─────────────────────────────────────
+# ── Financial News ──────────────────────────────────────
 def get_financial_news(query: str, max_articles: int = 3) -> str:
     try:
         url = "https://newsapi.org/v2/everything"
@@ -38,14 +53,11 @@ def get_financial_news(query: str, max_articles: int = 3) -> str:
             "language": "en",
             "sortBy": "publishedAt",
             "pageSize": max_articles,
-            # ✅ Removed 'from' date filter
         }
         response = requests.get(url, params=params)
         articles = response.json().get("articles", [])
-
         if not articles:
             return "No recent news found."
-
         news_text = "Recent Financial News:\n"
         for i, article in enumerate(articles, 1):
             news_text += f"""
@@ -58,6 +70,7 @@ def get_financial_news(query: str, max_articles: int = 3) -> str:
     except Exception as e:
         return f"News unavailable: {str(e)}"
 
+# ── Earnings Data ───────────────────────────────────────
 def get_earnings_data(ticker: str) -> str:
     try:
         stock = yf.Ticker(ticker)
@@ -76,34 +89,36 @@ Surprise(%): {row.get('Surprise(%)', 'N/A')}
     except Exception as e:
         return f"Earnings data unavailable: {str(e)}"
 
-# ── Smart Context Builder ──────────────────────────────
+# ── Smart Ticker Extractor ──────────────────────────────
 def extract_ticker(query: str) -> str | None:
-    """Detect stock tickers in query (e.g. AAPL, TSLA)"""
-    import re
-    words = query.upper().split()
-    # Common tickers are 1-5 uppercase letters
-    tickers = [w for w in words if re.match(r'^[A-Z]{1,5}$', w)]
-    known = ["AAPL","TSLA","GOOGL","MSFT","AMZN","META","NVDA",
-             "NFLX","JPM","BAC","WMT","BRK","V","MA","RELIANCE"]
-    for t in tickers:
-        if t in known:
-            return t
-    return tickers[0] if tickers else None
+    query_lower = query.lower()
 
+    # 1. Check company name mapping first
+    for name, ticker in COMPANY_MAP.items():
+        if name in query_lower:
+            return ticker
+
+    # 2. Look for explicit known tickers in uppercase (e.g. "AAPL")
+    words = query.upper().split()
+    for word in words:
+        clean = re.sub(r'[^A-Z]', '', word)
+        if clean in KNOWN_TICKERS:
+            return clean
+
+    return None
+
+# ── Smart Context Builder ───────────────────────────────
 def build_context(query: str) -> str:
-    """Build rich context from all data sources"""
     context_parts = []
 
-    # Always get news
     news = get_financial_news(query)
     context_parts.append(news)
 
-    # Get stock data if ticker detected
     ticker = extract_ticker(query)
     if ticker:
         stock = get_stock_data(ticker)
         earnings = get_earnings_data(ticker)
-        context_parts.append(stock)
-        context_parts.append(earnings)
+        context_parts.append(f"Stock: {stock}")
+        context_parts.append(f"Earnings: {earnings}")
 
     return "\n---\n".join(context_parts)
