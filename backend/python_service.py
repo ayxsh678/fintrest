@@ -1,9 +1,17 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from rag.retriever import build_context, get_stock_data
 from model.inference import generate_response
 
 app = FastAPI(title="Quantiq - Python Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ContextRequest(BaseModel):
