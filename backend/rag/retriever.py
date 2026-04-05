@@ -6,7 +6,6 @@ import re
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 
-# ── Company name to ticker mapping ─────────────────────
 COMPANY_MAP = {
     "apple": "AAPL", "tesla": "TSLA", "google": "GOOGL",
     "alphabet": "GOOGL", "microsoft": "MSFT", "amazon": "AMZN",
@@ -22,7 +21,6 @@ KNOWN_TICKERS = set(COMPANY_MAP.values()) | {
     "NFLX","JPM","BAC","WMT","V","MA","INFY","TCS"
 }
 
-# ── Stock Price Data ────────────────────────────────────
 def get_stock_data(ticker: str) -> str:
     try:
         stock = yf.Ticker(ticker)
@@ -43,7 +41,6 @@ Dividend Yield: {info.get('dividendYield', 'N/A')}
     except Exception as e:
         return f"Stock data unavailable for {ticker}: {str(e)}"
 
-# ── Financial News ──────────────────────────────────────
 def get_financial_news(query: str, max_articles: int = 3) -> str:
     try:
         url = "https://newsapi.org/v2/everything"
@@ -70,7 +67,6 @@ def get_financial_news(query: str, max_articles: int = 3) -> str:
     except Exception as e:
         return f"News unavailable: {str(e)}"
 
-# ── Earnings Data ───────────────────────────────────────
 def get_earnings_data(ticker: str) -> str:
     try:
         stock = yf.Ticker(ticker)
@@ -89,16 +85,13 @@ Surprise(%): {row.get('Surprise(%)', 'N/A')}
     except Exception as e:
         return f"Earnings data unavailable: {str(e)}"
 
-# ── Smart Ticker Extractor ──────────────────────────────
 def extract_ticker(query: str) -> str | None:
     query_lower = query.lower()
 
-    # 1. Check company name mapping first
     for name, ticker in COMPANY_MAP.items():
         if name in query_lower:
             return ticker
 
-    # 2. Look for explicit known tickers in uppercase (e.g. "AAPL")
     words = query.upper().split()
     for word in words:
         clean = re.sub(r'[^A-Z]', '', word)
@@ -107,7 +100,6 @@ def extract_ticker(query: str) -> str | None:
 
     return None
 
-# ── Smart Context Builder ───────────────────────────────
 def build_context(query: str) -> str:
     context_parts = []
 
