@@ -77,28 +77,23 @@ def generate_response(question: str, context: str,
     except Exception as e:
         return f"Error: {str(e)}"
     
-    def generate_portfolio_summary(tickers: list[str], context: str) -> str:
+
+def generate_portfolio_summary(tickers: list[str], context: str) -> str:
     if not GROQ_API_KEY:
         return "Error: GROQ_API_KEY not set"
-
     ticker_list = ", ".join(tickers)
-
     user_message = f"""### Portfolio Holdings: {ticker_list}
-
 ### Full Market Data:
 {context}
-
 ### Task:
 Analyze this portfolio and provide:
 1. PORTFOLIO HEALTH: Overall assessment (Bullish / Neutral / Bearish) with one-line reason
 2. WINNERS: Top performing holding(s) and why
 3. RISKS: Biggest risk(s) in this portfolio right now
-4. DIVERSIFICATION: Is this portfolio well-diversified? What's missing?
+4. DIVERSIFICATION: Is this portfolio well-diversified? What\'s missing?
 5. WATCHLIST: One thing to monitor closely across the portfolio this week
-
-Be compressed and direct. Traders don't have time for padding.
+Be compressed and direct. Traders don\'t have time for padding.
 Add a disclaimer at the end."""
-
     try:
         response = requests.post(
             GROQ_URL,
@@ -120,7 +115,6 @@ Add a disclaimer at the end."""
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
-
     except requests.exceptions.Timeout:
         return "Error: Request to Groq timed out."
     except requests.exceptions.HTTPError as e:
