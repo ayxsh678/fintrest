@@ -184,11 +184,16 @@ func main() {
 	}
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{allowedOrigin, "http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
-	}))
+    AllowOrigins:     []string{
+        allowedOrigin,
+        "http://localhost:3000",
+        "https://finance-ai-8qu9.vercel.app",
+        "https://finance-ai-8qu9-ebpxs5ach-ayxsh678s-projects.vercel.app",
+    },
+    AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
+    AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+    AllowCredentials: true,
+}))
 
 	// ── Health ───────────────────────────────────────────
 	r.GET("/", func(c *gin.Context) {
