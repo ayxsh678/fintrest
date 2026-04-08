@@ -12,3 +12,15 @@ services:
         sync: false
       - key: ALPHA_VANTAGE_KEY
         sync: false
+
+  - type: web
+    name: quantiq-go
+    runtime: go
+    rootDir: backend
+    buildCommand: go build -o main .
+    startCommand: ./main
+    envVars:
+      - key: PYTHON_SERVICE_URL
+        value: https://finance-ai-bt9x.onrender.com
+      - key: PORT
+        value: "8000"
