@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from rag.retriever import build_context,
+from rag.retriever import build_context
 from rag.portfolio import build_portfolio_context, extract_tickers_from_query, get_portfolio_data
 from rag.memory import create_session, get_history, append_to_history, clear_session
 from model.inference import generate_response, generate_portfolio_summary
