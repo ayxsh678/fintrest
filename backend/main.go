@@ -13,9 +13,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ── Models ─────────────────────────────────────────────
+
 type QueryRequest struct {
 	Question       string `json:"question" binding:"required"`
 	IncludeSources bool   `json:"include_sources"`
+	SessionID      string `json:"session_id"`
+	TimeRange      string `json:"time_range"`
 }
 
 type QueryResponse struct {
@@ -23,7 +27,10 @@ type QueryResponse struct {
 	ContextUsed  string   `json:"context_used"`
 	ResponseTime float64  `json:"response_time"`
 	Sources      []string `json:"sources"`
+	SessionID    string   `json:"session_id"`
 }
+
+// ── Global config ──────────────────────────────────────
 
 var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
@@ -37,12 +44,19 @@ func pythonURL() string {
 	return strings.TrimSuffix(url, "/")
 }
 
-func buildContext(question string) string {
-	payload, err := json.Marshal(map[string]string{"question": question})
+// ── Helpers ────────────────────────────────────────────
+
+func buildContext(question, timeRange string) string {
+	payload, err := json.Marshal(map[string]string{
+		"question":   question,
+		"time_range": timeRange,
+	})
 	if err != nil {
 		return "System: Failed to encode request."
 	}
-	resp, err := httpClient.Post(pythonURL()+"/context", "application/json", bytes.NewBuffer(payload))
+	resp, err := httpClient.Post(
+		pythonURL()+"/context", "application/json", bytes.NewBuffer(payload),
+	)
 	if err != nil {
 		return "System: Retrieval service currently unavailable."
 	}
@@ -57,27 +71,31 @@ func buildContext(question string) string {
 	return result.Context
 }
 
-func generateResponse(question, context string) string {
+func generateResponse(question, context, sessionID string) (string, string) {
 	payload, err := json.Marshal(map[string]string{
-		"question": question,
-		"context":  context,
+		"question":   question,
+		"context":    context,
+		"session_id": sessionID,
 	})
 	if err != nil {
-		return "System: Failed to encode request."
+		return "System: Failed to encode request.", sessionID
 	}
-	resp, err := httpClient.Post(pythonURL()+"/generate", "application/json", bytes.NewBuffer(payload))
+	resp, err := httpClient.Post(
+		pythonURL()+"/generate", "application/json", bytes.NewBuffer(payload),
+	)
 	if err != nil {
-		return "System: Inference engine currently unavailable."
+		return "System: Inference engine currently unavailable.", sessionID
 	}
 	defer resp.Body.Close()
 
 	var result struct {
-		Answer string `json:"answer"`
+		Answer    string `json:"answer"`
+		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "Error decoding AI response."
+		return "Error decoding AI response.", sessionID
 	}
-	return result.Answer
+	return result.Answer, result.SessionID
 }
 
 func getStockData(ticker string) interface{} {
@@ -94,11 +112,14 @@ func getStockData(ticker string) interface{} {
 
 func detectSources(context string) []string {
 	sources := []string{}
+	if strings.Contains(context, "TakeToday") {
+		sources = append(sources, "TakeToday (verified)")
+	}
 	if strings.Contains(context, "Stock:") {
 		sources = append(sources, "Yahoo Finance (real-time)")
 	}
 	if strings.Contains(context, "Recent Financial News:") {
-		sources = append(sources, "NewsAPI (last 7 days)")
+		sources = append(sources, "NewsAPI")
 	}
 	if strings.Contains(context, "Earnings Schedule") {
 		sources = append(sources, "Yahoo Finance (earnings)")
@@ -106,10 +127,57 @@ func detectSources(context string) []string {
 	return sources
 }
 
+func analyzePortfolio(tickers []string, sessionID string) (map[string]interface{}, error) {
+	payload, err := json.Marshal(map[string]interface{}{
+		"tickers":    tickers,
+		"session_id": sessionID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Post(
+		pythonURL()+"/portfolio", "application/json", bytes.NewBuffer(payload),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func portfolioFromChat(query, sessionID string) (map[string]interface{}, error) {
+	payload, err := json.Marshal(map[string]string{
+		"query":      query,
+		"session_id": sessionID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Post(
+		pythonURL()+"/portfolio/from-chat", "application/json", bytes.NewBuffer(payload),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// ── Main ───────────────────────────────────────────────
+
 func main() {
 	r := gin.Default()
 
-	// Pull allowed origins from env, fall back to localhost only
 	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
 	if allowedOrigin == "" {
 		allowedOrigin = "http://localhost:5173"
@@ -117,25 +185,30 @@ func main() {
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{allowedOrigin, "http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type"},
+		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
 	}))
 
+	// ── Health ───────────────────────────────────────────
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "Quantiq Go Gateway is running 🚀"})
+		c.JSON(http.StatusOK, gin.H{"status": "Quantiq Go Gateway is running"})
 	})
 
+	// ── Ask ──────────────────────────────────────────────
 	r.POST("/ask", func(c *gin.Context) {
 		var req QueryRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		if req.TimeRange == "" {
+			req.TimeRange = "7d"
+		}
 
 		start := time.Now()
-		context := buildContext(req.Question)
-		answer := generateResponse(req.Question, context)
+		context := buildContext(req.Question, req.TimeRange)
+		answer, sessionID := generateResponse(req.Question, context, req.SessionID)
 
 		contextUsed := ""
 		if req.IncludeSources {
@@ -147,13 +220,91 @@ func main() {
 			ContextUsed:  contextUsed,
 			ResponseTime: time.Since(start).Seconds(),
 			Sources:      detectSources(context),
+			SessionID:    sessionID,
 		})
 	})
 
+	// ── Stock ────────────────────────────────────────────
 	r.GET("/stock/:ticker", func(c *gin.Context) {
 		c.JSON(http.StatusOK, getStockData(strings.ToUpper(c.Param("ticker"))))
 	})
 
+	// ── Session ──────────────────────────────────────────
+	r.POST("/session/new", func(c *gin.Context) {
+		resp, err := httpClient.Post(
+			pythonURL()+"/session/new", "application/json", bytes.NewBuffer([]byte("{}")),
+		)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Session service unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+		var result interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+		c.JSON(http.StatusOK, result)
+	})
+
+	r.DELETE("/session/:id", func(c *gin.Context) {
+		req, err := http.NewRequest(
+			http.MethodDelete,
+			pythonURL()+"/session/"+c.Param("id"),
+			nil,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to build request"})
+			return
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Session service unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+		var result interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+		c.JSON(http.StatusOK, result)
+	})
+
+	// ── Portfolio ─────────────────────────────────────────
+	r.POST("/portfolio", func(c *gin.Context) {
+		var req struct {
+			Tickers   []string `json:"tickers" binding:"required"`
+			SessionID string   `json:"session_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if len(req.Tickers) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No tickers provided"})
+			return
+		}
+		result, err := analyzePortfolio(req.Tickers, req.SessionID)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Portfolio service unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	r.POST("/portfolio/from-chat", func(c *gin.Context) {
+		var req struct {
+			Query     string `json:"query" binding:"required"`
+			SessionID string `json:"session_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		result, err := portfolioFromChat(req.Query, req.SessionID)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Portfolio service unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	// ── Start ────────────────────────────────────────────
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8000"
