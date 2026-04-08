@@ -1,79 +1,109 @@
+import yfinance as yf
+import requests
 import os
-import concurrent.futures
-from rag.retriever import get_stock_data, get_earnings_data, extract_ticker
+from datetime import datetime, timedelta
 
-def get_portfolio_data(tickers: list[str]) -> dict:
-    """
-    Fetch full breakdown for multiple tickers in parallel.
-    Returns a dict of ticker -> {stock_data, earnings_data}
-    """
-    results = {}
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 
-    def fetch_one(ticker):
-        return ticker, {
-            "stock":    get_stock_data(ticker),
-            "earnings": get_earnings_data(ticker),
+# ── Stock Price Data ───────────────────────────────────
+def get_stock_data(ticker: str) -> str:
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        hist = stock.history(period="5d")
+
+        return f"""
+Stock: {info.get('longName', ticker)} ({ticker})
+Current Price: ${info.get('currentPrice', 'N/A')}
+Previous Close: ${info.get('previousClose', 'N/A')}
+52W High: ${info.get('fiftyTwoWeekHigh', 'N/A')}
+52W Low: ${info.get('fiftyTwoWeekLow', 'N/A')}
+P/E Ratio: {info.get('trailingPE', 'N/A')}
+Market Cap: ${info.get('marketCap', 'N/A'):,}
+EPS: {info.get('trailingEps', 'N/A')}
+Dividend Yield: {info.get('dividendYield', 'N/A')}
+5-Day Change: {((hist['Close'].iloc[-1] - hist['Close'].iloc[0]) / hist['Close'].iloc[0] * 100):.2f}%
+"""
+    except Exception as e:
+        return f"Stock data unavailable for {ticker}: {str(e)}"
+
+# ── Financial News ─────────────────────────────────────
+def get_financial_news(query: str, max_articles: int = 3) -> str:
+    try:
+        url = "https://newsapi.org/v2/everything"
+        params = {
+            "q": f"{query} finance",
+            "apiKey": NEWS_API_KEY,
+            "language": "en",
+            "sortBy": "publishedAt",
+            "pageSize": max_articles,
+            # ✅ Removed 'from' date filter
         }
+        response = requests.get(url, params=params)
+        articles = response.json().get("articles", [])
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        futures = {executor.submit(fetch_one, t): t for t in tickers}
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                ticker, data = future.result()
-                results[ticker] = data
-            except Exception as e:
-                t = futures[future]
-                results[t] = {
-                    "stock":    f"Data unavailable for {t}: {str(e)}",
-                    "earnings": "Earnings unavailable.",
-                }
+        if not articles:
+            return "No recent news found."
 
-    return results
+        news_text = "Recent Financial News:\n"
+        for i, article in enumerate(articles, 1):
+            news_text += f"""
+{i}. {article['title']}
+   Source: {article['source']['name']}
+   Date: {article['publishedAt'][:10]}
+   Summary: {article.get('description', 'N/A')}
+"""
+        return news_text
+    except Exception as e:
+        return f"News unavailable: {str(e)}"
 
+def get_earnings_data(ticker: str) -> str:
+    try:
+        stock = yf.Ticker(ticker)
+        earnings = stock.earnings_dates
+        if earnings is not None and not earnings.empty:
+            result = f"Recent Earnings for {ticker}:\n"
+            for date, row in earnings.head(4).iterrows():
+                result += f"""
+Date: {str(date)[:10]}
+EPS Estimate: {row.get('EPS Estimate', 'N/A')}
+Reported EPS: {row.get('Reported EPS', 'N/A')}
+Surprise(%): {row.get('Surprise(%)', 'N/A')}
+"""
+            return result
+        return "Earnings data unavailable."
+    except Exception as e:
+        return f"Earnings data unavailable: {str(e)}"
 
-def build_portfolio_context(tickers: list[str]) -> str:
-    """
-    Assembles full context string for all tickers — passed to LLM.
-    """
-    data = get_portfolio_data(tickers)
-    separator = "\n" + "=" * 30 + "\n"
-    parts = []
-
-    for ticker in tickers:
-        if ticker not in data:
-            continue
-        section = (
-            f"── {ticker} ──\n"
-            f"{data[ticker]['stock']}\n"
-            f"{data[ticker]['earnings']}"
-        )
-        parts.append(section)
-
-    return separator.join(parts)
-
-
-def extract_tickers_from_query(query: str) -> list[str]:
-    """
-    Extracts multiple tickers from a single query string.
-    e.g. 'track AAPL TSLA NVDA' → ['AAPL', 'TSLA', 'NVDA']
-    """
+# ── Smart Context Builder ──────────────────────────────
+def extract_ticker(query: str) -> str | None:
+    """Detect stock tickers in query (e.g. AAPL, TSLA)"""
     import re
-    from rag.retriever import KNOWN_TICKERS, COMPANY_MAP
+    words = query.upper().split()
+    # Common tickers are 1-5 uppercase letters
+    tickers = [w for w in words if re.match(r'^[A-Z]{1,5}$', w)]
+    known = ["AAPL","TSLA","GOOGL","MSFT","AMZN","META","NVDA",
+             "NFLX","JPM","BAC","WMT","BRK","V","MA","RELIANCE"]
+    for t in tickers:
+        if t in known:
+            return t
+    return tickers[0] if tickers else None
 
-    found = []
-    query_lower = query.lower()
+def build_context(query: str) -> str:
+    """Build rich context from all data sources"""
+    context_parts = []
 
-    # Match company names first (longest first)
-    for name in sorted(COMPANY_MAP, key=len, reverse=True):
-        if name in query_lower:
-            ticker = COMPANY_MAP[name]
-            if ticker not in found:
-                found.append(ticker)
+    # Always get news
+    news = get_financial_news(query)
+    context_parts.append(news)
 
-    # Match raw ticker symbols
-    for word in query.upper().split():
-        clean = re.sub(r"[^A-Z]", "", word)
-        if clean in KNOWN_TICKERS and clean not in found:
-            found.append(clean)
+    # Get stock data if ticker detected
+    ticker = extract_ticker(query)
+    if ticker:
+        stock = get_stock_data(ticker)
+        earnings = get_earnings_data(ticker)
+        context_parts.append(stock)
+        context_parts.append(earnings)
 
-    return found
+    return "\n---\n".join(context_parts)
