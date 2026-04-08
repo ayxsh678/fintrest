@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, CartesianGrid
 } from "recharts";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const API_URL = "https://finance-ai-bt9x.onrender.com";
 
 // ── Mock stock chart data (replace with real API later) ──
 const generateChartData = (base, points = 30) => {
