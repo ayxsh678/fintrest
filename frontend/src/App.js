@@ -173,7 +173,6 @@ function SentimentGauge({ ticker, sentiment, loading }) {
                 Top Headlines
               </div>
               {headlines.slice(0, 3).map((h, i) => {
-                const _hScore = 50; // individual scoring not returned, just show neutrally
                 return (
                   <div key={i} style={{
                     fontSize: 11, color: "#8b949e", lineHeight: 1.5,
