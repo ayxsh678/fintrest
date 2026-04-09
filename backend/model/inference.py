@@ -128,3 +128,59 @@ Add a disclaimer at the end."""
         return "Error: Unexpected response format from Groq."
     except Exception as e:
         return f"Error: {str(e)}"
+
+def generate_comparison_verdict(ticker_a: str, ticker_b: str, context: str) -> str:
+    if not GROQ_API_KEY:
+        return "Error: GROQ_API_KEY not set"
+
+    user_message = f"""### Stock Comparison: {ticker_a} vs {ticker_b}
+
+### Full Market Data:
+{context}
+
+### Task:
+Compare these two stocks and provide:
+1. VERDICT: Which is the stronger buy right now and why (one clear sentence)
+2. {ticker_a} STRENGTHS: Top 2-3 reasons to favour it
+3. {ticker_b} STRENGTHS: Top 2-3 reasons to favour it
+4. KEY DIFFERENCES: Most important divergence between the two (valuation, momentum, risk)
+5. WHO SHOULD BUY WHICH: Growth investor vs value investor vs trader — who picks which stock?
+
+Be compressed and direct. No padding.
+Add a disclaimer at the end."""
+
+    try:
+        response = requests.post(
+            GROQ_URL,
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_message}
+                ],
+                "max_tokens": 1024,
+                "temperature": 0.2
+            },
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+
+    except requests.exceptions.Timeout:
+        return "Error: Request to Groq timed out."
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code
+        if status == 429:
+            return "Error: Groq rate limit hit. Please retry."
+        elif status == 401:
+            return "Error: Invalid GROQ_API_KEY."
+        return f"Error: Groq API returned {status}"
+    except (KeyError, IndexError):
+        return "Error: Unexpected response format from Groq."
+    except Exception as e:
+        return f"Error: {str(e)}"

@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from rag.retriever import build_context
+from rag.retriever import build_context, get_stock_data
 from rag.portfolio import build_portfolio_context, extract_tickers_from_query, get_portfolio_data
+from rag.comparison import build_comparison_context, extract_comparison_tickers, get_comparison_data
 from rag.memory import create_session, get_history, append_to_history, clear_session
-from model.inference import generate_response, generate_portfolio_summary
+from rag.alerts import create_alert, get_alerts, delete_alert, check_alerts
+from rag.sentiment import get_sentiment
+from model.inference import generate_response, generate_portfolio_summary, generate_comparison_verdict
 import os
 import uvicorn
 
@@ -29,6 +32,31 @@ class PortfolioFromChatRequest(BaseModel):
     query: str
     session_id: str | None = None
 
+class CompareRequest(BaseModel):
+    ticker_a: str
+    ticker_b: str
+    session_id: str | None = None
+
+class CompareFromChatRequest(BaseModel):
+    query: str
+    session_id: str | None = None
+
+class AlertCreateRequest(BaseModel):
+    session_id: str
+    ticker: str
+    threshold: float
+    direction: str  # "above" | "below"
+
+class AlertGetRequest(BaseModel):
+    session_id: str
+
+class AlertDeleteRequest(BaseModel):
+    session_id: str
+    alert_id: int
+
+class AlertCheckRequest(BaseModel):
+    session_id: str
+
 class ContextResponse(BaseModel):
     context: str
 
@@ -49,6 +77,21 @@ class PortfolioResponse(BaseModel):
     breakdown: dict
     summary: str
     session_id: str
+
+class CompareResponse(BaseModel):
+    ticker_a: str
+    ticker_b: str
+    data_a: dict
+    data_b: dict
+    verdict: str
+    session_id: str
+
+class SentimentResponse(BaseModel):
+    ticker: str
+    score: float
+    label: str
+    headline_count: int
+    headlines: list[str]
 
 
 # ── Health ─────────────────────────────────────────────
@@ -117,6 +160,17 @@ def stock(ticker: str):
     return StockResponse(ticker=ticker_clean, data=get_stock_data(ticker_clean))
 
 
+# ── Sentiment ──────────────────────────────────────────
+
+@app.get("/sentiment/{ticker}", response_model=SentimentResponse)
+def sentiment(ticker: str, company: str = ""):
+    ticker_clean = ticker.upper().strip()
+    if not ticker_clean:
+        raise HTTPException(status_code=400, detail="Ticker cannot be empty")
+    result = get_sentiment(ticker_clean, company_name=company)
+    return SentimentResponse(**result)
+
+
 # ── Portfolio ──────────────────────────────────────────
 
 @app.post("/portfolio", response_model=PortfolioResponse)
@@ -125,7 +179,6 @@ def analyze_portfolio(req: PortfolioRequest):
         raise HTTPException(status_code=400, detail="No tickers provided")
 
     tickers = list(dict.fromkeys(t.upper().strip() for t in req.tickers if t.strip()))
-
     if len(tickers) > 20:
         raise HTTPException(status_code=400, detail="Maximum 20 tickers per portfolio")
 
@@ -133,12 +186,7 @@ def analyze_portfolio(req: PortfolioRequest):
     breakdown = get_portfolio_data(tickers)
     context = build_portfolio_context(tickers)
     summary = generate_portfolio_summary(tickers, context)
-
-    append_to_history(
-        session_id,
-        f"Analyze portfolio: {', '.join(tickers)}",
-        summary
-    )
+    append_to_history(session_id, f"Analyze portfolio: {', '.join(tickers)}", summary)
 
     return PortfolioResponse(
         tickers=tickers,
@@ -151,17 +199,96 @@ def analyze_portfolio(req: PortfolioRequest):
 @app.post("/portfolio/from-chat", response_model=PortfolioResponse)
 def portfolio_from_chat(req: PortfolioFromChatRequest):
     tickers = extract_tickers_from_query(req.query)
-
     if not tickers:
         raise HTTPException(
             status_code=400,
             detail="No recognizable tickers found in your message"
         )
+    return analyze_portfolio(PortfolioRequest(tickers=tickers, session_id=req.session_id))
 
-    return analyze_portfolio(PortfolioRequest(
-        tickers=tickers,
+
+# ── Comparison ─────────────────────────────────────────
+
+@app.post("/compare", response_model=CompareResponse)
+def compare_stocks(req: CompareRequest):
+    ticker_a = req.ticker_a.upper().strip()
+    ticker_b = req.ticker_b.upper().strip()
+
+    if not ticker_a or not ticker_b:
+        raise HTTPException(status_code=400, detail="Both tickers are required")
+    if ticker_a == ticker_b:
+        raise HTTPException(status_code=400, detail="Tickers must be different")
+
+    session_id = req.session_id or create_session()
+    data = get_comparison_data(ticker_a, ticker_b)
+    context = build_comparison_context(ticker_a, ticker_b)
+    verdict = generate_comparison_verdict(ticker_a, ticker_b, context)
+
+    append_to_history(
+        session_id,
+        f"Compare {ticker_a} vs {ticker_b}",
+        verdict
+    )
+
+    return CompareResponse(
+        ticker_a=ticker_a,
+        ticker_b=ticker_b,
+        data_a=data.get(ticker_a, {}),
+        data_b=data.get(ticker_b, {}),
+        verdict=verdict,
+        session_id=session_id
+    )
+
+
+@app.post("/compare/from-chat", response_model=CompareResponse)
+def compare_from_chat(req: CompareFromChatRequest):
+    result = extract_comparison_tickers(req.query)
+    if not result:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not find two tickers to compare. Try: 'compare AAPL vs TSLA'"
+        )
+    ticker_a, ticker_b = result
+    return compare_stocks(CompareRequest(
+        ticker_a=ticker_a,
+        ticker_b=ticker_b,
         session_id=req.session_id
     ))
+
+
+# ── Alerts ─────────────────────────────────────────────
+
+@app.post("/create_alert")
+def route_create_alert(req: AlertCreateRequest):
+    direction = req.direction.lower()
+    if direction not in ("above", "below"):
+        raise HTTPException(status_code=400, detail="direction must be 'above' or 'below'")
+    if req.threshold <= 0:
+        raise HTTPException(status_code=400, detail="threshold must be a positive number")
+    alert = create_alert(
+        session_id=req.session_id,
+        ticker=req.ticker,
+        threshold=req.threshold,
+        direction=direction,
+    )
+    return alert
+
+
+@app.post("/get_alerts")
+def route_get_alerts(req: AlertGetRequest):
+    return get_alerts(req.session_id)
+
+
+@app.post("/delete_alert")
+def route_delete_alert(req: AlertDeleteRequest):
+    deleted = delete_alert(req.session_id, req.alert_id)
+    return {"deleted": deleted}
+
+
+@app.post("/check_alerts")
+def route_check_alerts(req: AlertCheckRequest):
+    triggered = check_alerts(req.session_id)
+    return {"triggered": triggered}
 
 
 # ── Entry point ────────────────────────────────────────
