@@ -12,3 +12,4 @@ accelerate
 bitsandbytes
 newsapi-python
 vaderSentiment
+# force rebuild
