@@ -11,3 +11,4 @@ torch
 accelerate
 bitsandbytes
 newsapi-python
+vaderSentiment
