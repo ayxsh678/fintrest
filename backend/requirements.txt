@@ -6,4 +6,5 @@ yfinance
 newsapi-python
 cachetools
 feedparser
-redisvaderSentiment
+redis
+vaderSentiment
