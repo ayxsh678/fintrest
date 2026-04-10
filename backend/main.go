@@ -285,6 +285,7 @@ func startAlertPoller() {
 // ── Main ────────────────────────────────────────────────
 
 func main() {
+	InitDB()
 	r := gin.Default()
 
 	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
@@ -527,6 +528,22 @@ func main() {
 
 	// ── Start poller & server ──────────────────────────
 	startAlertPoller()
+
+
+
+
+	// ── Auth (public) ─────────────────────────────────
+	r.POST("/register", handleRegister)
+	r.POST("/login", handleLogin)
+
+	// ── Protected routes ──────────────────────────────
+	authGroup := r.Group("/")
+	authGroup.Use(AuthMiddleware())
+	{
+		authGroup.GET("/watchlist", handleGetWatchlist)
+		authGroup.POST("/watchlist", handleAddWatchlist)
+		authGroup.DELETE("/watchlist/:ticker", handleDeleteWatchlist)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
