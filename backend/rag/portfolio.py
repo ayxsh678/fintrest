@@ -1,36 +1,40 @@
 import re
 import concurrent.futures
-from rag.retriever import get_stock_data, get_earnings_data
+from rag.retriever import (
+    get_stock_data, get_earnings_data, detect_asset_type, COMPANY_MAP, KNOWN_TICKERS
+)
+from rag.crypto import get_crypto_data, COIN_MAP
+from rag.india_stocks import get_india_stock_data, INDIA_COMPANY_MAP
 
-KNOWN_TICKERS = {
-    "AAPL","TSLA","NVDA","MSFT","GOOGL","GOOG","AMZN","META","NFLX","AMD",
-    "INTC","ORCL","CRM","ADBE","PYPL","UBER","LYFT","SNAP","TWTR","SHOP",
-    "SQ","COIN","HOOD","PLTR","RBLX","DKNG","ABNB","DASH","RIVN","LCID",
-    "NIO","BABA","JD","PDD","BIDU","TSM","ASML","ARM","QCOM","TXN","MU",
-    "WMT","TGT","COST","HD","LOW","MCD","SBUX","NKE","DIS","NFLX","V","MA",
-    "JPM","BAC","WFC","GS","MS","BRK","XOM","CVX","PFE","JNJ","UNH","LLY"
-}
 
-COMPANY_MAP = {
-    "apple": "AAPL", "tesla": "TSLA", "nvidia": "NVDA", "microsoft": "MSFT",
-    "google": "GOOGL", "alphabet": "GOOGL", "amazon": "AMZN", "meta": "META",
-    "facebook": "META", "netflix": "NFLX", "amd": "AMD", "intel": "INTC",
-    "oracle": "ORCL", "salesforce": "CRM", "adobe": "ADBE", "paypal": "PYPL",
-    "uber": "UBER", "shopify": "SHOP", "coinbase": "COIN", "palantir": "PLTR",
-    "roblox": "RBLX", "airbnb": "ABNB", "rivian": "RIVN", "walmart": "WMT",
-    "disney": "DIS", "visa": "V", "mastercard": "MA", "jpmorgan": "JPM",
-    "nike": "NKE", "starbucks": "SBUX",
-}
+# ── Data fetcher ───────────────────────────────────────
 
 def get_portfolio_data(tickers: list[str]) -> dict:
-    results = {}
+    """Fetch data for each ticker — auto-detects US stock, India stock, or crypto."""
 
     def fetch_one(ticker):
-        return ticker, {
-            "stock":    get_stock_data(ticker),
-            "earnings": get_earnings_data(ticker),
-        }
+        asset = detect_asset_type(ticker)
 
+        if asset["type"] == "crypto" and asset["identifier"]:
+            return ticker, {
+                "stock":      get_crypto_data(asset["identifier"]),
+                "earnings":   "N/A — crypto asset",
+                "asset_type": "crypto",
+            }
+        elif asset["type"] == "india_stock" and asset["identifier"]:
+            return ticker, {
+                "stock":      get_india_stock_data(asset["identifier"]),
+                "earnings":   get_earnings_data(asset["identifier"]),
+                "asset_type": "india_stock",
+            }
+        else:
+            return ticker, {
+                "stock":      get_stock_data(ticker),
+                "earnings":   get_earnings_data(ticker),
+                "asset_type": "us_stock",
+            }
+
+    results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(fetch_one, t): t for t in tickers}
         for future in concurrent.futures.as_completed(futures):
@@ -40,43 +44,69 @@ def get_portfolio_data(tickers: list[str]) -> dict:
             except Exception as e:
                 t = futures[future]
                 results[t] = {
-                    "stock":    f"Data unavailable for {t}: {str(e)}",
-                    "earnings": "Earnings unavailable.",
+                    "stock":      f"Data unavailable for {t}: {str(e)}",
+                    "earnings":   "Unavailable.",
+                    "asset_type": "unknown",
                 }
-
     return results
 
 
+# ── Context builder ────────────────────────────────────
+
 def build_portfolio_context(tickers: list[str]) -> str:
-    data = get_portfolio_data(tickers)
+    data      = get_portfolio_data(tickers)
     separator = "\n" + "=" * 30 + "\n"
-    parts = []
+    parts     = []
+
+    ASSET_LABELS = {
+        "crypto":      "Crypto",
+        "india_stock": "NSE/BSE",
+        "us_stock":    "NYSE/NASDAQ",
+    }
 
     for ticker in tickers:
         if ticker not in data:
             continue
-        section = (
-            f"── {ticker} ──\n"
-            f"{data[ticker]['stock']}\n"
-            f"{data[ticker]['earnings']}"
-        )
+        label   = ASSET_LABELS.get(data[ticker].get("asset_type", ""), "")
+        header  = f"── {ticker}{f' ({label})' if label else ''} ──"
+        section = f"{header}\n{data[ticker]['stock']}\n{data[ticker]['earnings']}"
         parts.append(section)
 
     return separator.join(parts)
 
 
+# ── Ticker extractor ───────────────────────────────────
+
 def extract_tickers_from_query(query: str) -> list[str]:
-    found = []
+    """
+    Extract all recognizable tickers from a natural language query.
+    Checks crypto → India stocks → US stocks → raw symbols, in that order.
+    """
+    found       = []
     query_lower = query.lower()
 
+    # Crypto — check by name/symbol
+    for name in sorted(COIN_MAP, key=len, reverse=True):
+        if name in query_lower and name.upper() not in found:
+            found.append(name.upper())
+
+    # India stocks — check by company name
+    for name in sorted(INDIA_COMPANY_MAP, key=len, reverse=True):
+        if name in query_lower:
+            ticker = INDIA_COMPANY_MAP[name]
+            if ticker not in found:
+                found.append(ticker)
+
+    # US stocks — check by company name
     for name in sorted(COMPANY_MAP, key=len, reverse=True):
         if name in query_lower:
             ticker = COMPANY_MAP[name]
             if ticker not in found:
                 found.append(ticker)
 
+    # Raw ticker symbols (e.g. "AAPL", "RELIANCE.NS")
     for word in query.upper().split():
-        clean = re.sub(r"[^A-Z]", "", word)
+        clean = re.sub(r"[^A-Z0-9.&-]", "", word)
         if clean in KNOWN_TICKERS and clean not in found:
             found.append(clean)
 
