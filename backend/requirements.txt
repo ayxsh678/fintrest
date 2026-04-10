@@ -7,5 +7,6 @@ newsapi-python
 cachetools
 feedparser
 redis
-vaderSentimentpycoingecko
+vaderSentiment
+pycoingecko
 cachetools
