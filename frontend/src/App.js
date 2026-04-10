@@ -10,32 +10,46 @@ const API_URL = "https://quantiq-go.onrender.com";
 const generateChartData = (base, points = 30) => {
   let price = base;
   return Array.from({ length: points }, (_, i) => {
-    price = price + (Math.random() - 0.48) * 4;
+    price = price + (Math.random() - 0.48) * (base * 0.008);
     return { day: `D${i + 1}`, price: parseFloat(price.toFixed(2)) };
   });
 };
 
+// ── Watchlist — US + India + Crypto ────────────────────
 const WATCHLIST = [
-  { ticker: "AAPL", name: "Apple Inc.",   price: 255.92, change: +2.86, base: 248 },
-  { ticker: "TSLA", name: "Tesla Inc.",   price: 172.4,  change: -1.24, base: 175 },
-  { ticker: "NVDA", name: "NVIDIA Corp.", price: 887.3,  change: +3.51, base: 860 },
-  { ticker: "MSFT", name: "Microsoft",   price: 415.6,  change: +0.92, base: 410 },
+  // US Stocks
+  { ticker: "AAPL",         name: "Apple Inc.",      price: 255.92, change: +2.86, base: 248,    type: "US"     },
+  { ticker: "NVDA",         name: "NVIDIA Corp.",     price: 887.3,  change: +3.51, base: 860,    type: "US"     },
+  // India Stocks
+  { ticker: "RELIANCE.NS",  name: "Reliance Ind.",    price: 2987,   change: +1.24, base: 2950,   type: "India"  },
+  { ticker: "TCS.NS",       name: "TCS",              price: 3842,   change: -0.87, base: 3900,   type: "India"  },
+  // Crypto
+  { ticker: "BTC",          name: "Bitcoin",          price: 83200,  change: +2.14, base: 81000,  type: "Crypto" },
+  { ticker: "ETH",          name: "Ethereum",         price: 3820,   change: -1.05, base: 3900,   type: "Crypto" },
 ];
 
 const SUGGESTIONS = [
   "Should I buy AAPL right now?",
+  "What is Bitcoin doing today?",
+  "Compare RELIANCE.NS vs TCS.NS",
+  "Analyze portfolio BTC ETH NVDA",
+  "What is Ethereum's 7 day trend?",
   "Compare AAPL vs MSFT",
-  "Analyze portfolio AAPL TSLA NVDA",
-  "What is NVDA's earnings trend?",
-  "Explain dollar cost averaging",
 ];
+
+// ── Asset type badge colors ─────────────────────────────
+const TYPE_STYLES = {
+  Crypto: { bg: "#1a1a2e", color: "#a78bfa" },
+  India:  { bg: "#1a2e1a", color: "#3fb950" },
+  US:     { bg: "#1a1e2e", color: "#60a5fa" },
+};
 
 // ── Sentiment helpers ───────────────────────────────────
 const sentimentColor = (score) => {
   if (score === null || score === undefined) return "#8b949e";
-  if (score >= 62) return "#3fb950"; // Bullish — green
-  if (score <= 38) return "#f85149"; // Bearish — red
-  return "#e3b341";                  // Neutral  — amber
+  if (score >= 62) return "#3fb950";
+  if (score <= 38) return "#f85149";
+  return "#e3b341";
 };
 
 const sentimentLabel = (score) => {
@@ -51,23 +65,14 @@ function SentimentBar({ score, loading }) {
   return (
     <div style={{ marginTop: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-        <span style={{ fontSize: 9, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>
-          Sentiment
-        </span>
+        <span style={{ fontSize: 9, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>Sentiment</span>
         <span style={{ fontSize: 9, fontWeight: 700, color: loading ? "#8b949e" : color }}>
           {loading ? "…" : score !== null ? sentimentLabel(score) : "—"}
         </span>
       </div>
-      <div style={{
-        height: 3, background: "#21262d", borderRadius: 2, overflow: "hidden",
-      }}>
+      <div style={{ height: 3, background: "#21262d", borderRadius: 2, overflow: "hidden" }}>
         {!loading && score !== null && (
-          <div style={{
-            height: "100%", width: `${score}%`,
-            background: `linear-gradient(90deg, ${color}88, ${color})`,
-            borderRadius: 2,
-            transition: "width 0.6s ease",
-          }} />
+          <div style={{ height: "100%", width: `${score}%`, background: `linear-gradient(90deg, ${color}88, ${color})`, borderRadius: 2, transition: "width 0.6s ease" }} />
         )}
       </div>
     </div>
@@ -76,34 +81,21 @@ function SentimentBar({ score, loading }) {
 
 // ── Sentiment Gauge (full, for center panel) ────────────
 function SentimentGauge({ ticker, sentiment, loading }) {
-  const score  = sentiment?.score ?? null;
-  const label  = sentiment?.label ?? "—";
-  const color  = sentimentColor(score);
-  const count  = sentiment?.headline_count ?? 0;
+  const score     = sentiment?.score ?? null;
+  const label     = sentiment?.label ?? "—";
+  const color     = sentimentColor(score);
+  const count     = sentiment?.headline_count ?? 0;
   const headlines = sentiment?.headlines ?? [];
 
   return (
-    <div style={{
-      background: "#0d1117", border: "1px solid #21262d",
-      borderRadius: 16, padding: "20px 24px",
-    }}>
-      {/* Header row */}
+    <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px 24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 11, color: "#8b949e", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>
-            News Sentiment
-          </div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>
-            {ticker}
-          </div>
+          <div style={{ fontSize: 11, color: "#8b949e", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>News Sentiment</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{ticker}</div>
         </div>
         {!loading && score !== null && (
-          <div style={{
-            background: `${color}18`, border: `1px solid ${color}44`,
-            borderRadius: 20, padding: "4px 12px",
-            fontFamily: "'DM Mono', monospace", fontSize: 12,
-            color, fontWeight: 700,
-          }}>
+          <div style={{ background: `${color}18`, border: `1px solid ${color}44`, borderRadius: 20, padding: "4px 12px", fontFamily: "'DM Mono', monospace", fontSize: 12, color, fontWeight: 700 }}>
             {label}
           </div>
         )}
@@ -113,84 +105,37 @@ function SentimentGauge({ ticker, sentiment, loading }) {
         <div style={{ fontSize: 12, color: "#8b949e" }}>Analyzing headlines…</div>
       ) : score !== null ? (
         <>
-          {/* Score bar */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <span style={{ fontSize: 10, color: "#f85149" }}>Bearish</span>
-              <span style={{
-                fontFamily: "'DM Mono', monospace", fontSize: 20,
-                fontWeight: 700, color,
-              }}>
-                {score}
-              </span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, fontWeight: 700, color }}>{score}</span>
               <span style={{ fontSize: 10, color: "#3fb950" }}>Bullish</span>
             </div>
-
-            {/* Track with three zones */}
             <div style={{ position: "relative", height: 8, borderRadius: 4, overflow: "hidden" }}>
-              {/* Background zones */}
-              <div style={{
-                position: "absolute", inset: 0,
-                background: "linear-gradient(90deg, #f8514933 0%, #e3b34133 40%, #3fb95033 100%)",
-              }} />
-              {/* Fill indicator */}
-              <div style={{
-                position: "absolute", top: 0, left: 0, bottom: 0,
-                width: `${score}%`,
-                background: `linear-gradient(90deg, ${color}66, ${color})`,
-                borderRadius: 4,
-                transition: "width 0.8s ease",
-              }} />
-              {/* Needle */}
-              <div style={{
-                position: "absolute", top: 0, bottom: 0,
-                left: `calc(${score}% - 1px)`,
-                width: 2, background: color, borderRadius: 1,
-                transition: "left 0.8s ease",
-              }} />
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, #f8514933 0%, #e3b34133 40%, #3fb95033 100%)" }} />
+              <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: `${score}%`, background: `linear-gradient(90deg, ${color}66, ${color})`, borderRadius: 4, transition: "width 0.8s ease" }} />
+              <div style={{ position: "absolute", top: 0, bottom: 0, left: `calc(${score}% - 1px)`, width: 2, background: color, borderRadius: 1, transition: "left 0.8s ease" }} />
             </div>
-
-            {/* Zone labels */}
-            <div style={{
-              display: "flex", justifyContent: "space-between",
-              marginTop: 4, fontSize: 9, color: "#8b949e",
-            }}>
-              <span>0</span>
-              <span style={{ color: "#e3b341" }}>Neutral 40–62</span>
-              <span>100</span>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: "#8b949e" }}>
+              <span>0</span><span style={{ color: "#e3b341" }}>Neutral 40–62</span><span>100</span>
             </div>
           </div>
-
-          {/* Meta */}
           <div style={{ fontSize: 10, color: "#8b949e", marginBottom: count > 0 ? 10 : 0 }}>
             Based on {count} headline{count !== 1 ? "s" : ""} from the past 3 days
           </div>
-
-          {/* Top headlines */}
           {headlines.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontSize: 10, color: "#8b949e", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Top Headlines
-              </div>
-              {headlines.slice(0, 3).map((h, i) => {
-                return (
-                  <div key={i} style={{
-                    fontSize: 11, color: "#8b949e", lineHeight: 1.5,
-                    padding: "6px 10px",
-                    background: "#161b22", borderRadius: 8,
-                    borderLeft: `2px solid ${color}66`,
-                  }}>
-                    {h.length > 110 ? h.slice(0, 110) + "…" : h}
-                  </div>
-                );
-              })}
+              <div style={{ fontSize: 10, color: "#8b949e", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Top Headlines</div>
+              {headlines.slice(0, 3).map((h, i) => (
+                <div key={i} style={{ fontSize: 11, color: "#8b949e", lineHeight: 1.5, padding: "6px 10px", background: "#161b22", borderRadius: 8, borderLeft: `2px solid ${color}66` }}>
+                  {h.length > 110 ? h.slice(0, 110) + "…" : h}
+                </div>
+              ))}
             </div>
           )}
         </>
       ) : (
-        <div style={{ fontSize: 11, color: "#8b949e" }}>
-          No sentiment data — check that NEWSAPI_KEY is set.
-        </div>
+        <div style={{ fontSize: 11, color: "#8b949e" }}>No sentiment data — check that NEWSAPI_KEY is set.</div>
       )}
     </div>
   );
@@ -222,6 +167,12 @@ const clearSession = async () => {
 // ── TradingView Widget ──────────────────────────────────
 function TradingViewChart({ ticker, height = 220 }) {
   const containerRef = useRef(null);
+
+  const tvSymbol = (t) => {
+    const cryptoMap = { BTC: "BINANCE:BTCUSDT", ETH: "BINANCE:ETHUSDT", SOL: "BINANCE:SOLUSDT", BNB: "BINANCE:BNBUSDT", DOGE: "BINANCE:DOGEUSDT" };
+    return cryptoMap[t] || t;
+  };
+
   useEffect(() => {
     if (!containerRef.current) return;
     containerRef.current.innerHTML = "";
@@ -230,7 +181,7 @@ function TradingViewChart({ ticker, height = 220 }) {
     script.type = "text/javascript";
     script.async = true;
     script.innerHTML = JSON.stringify({
-      autosize: true, symbol: ticker, interval: "D",
+      autosize: true, symbol: tvSymbol(ticker), interval: "D",
       timezone: "Etc/UTC", theme: "dark", style: "1", locale: "en",
       allow_symbol_change: false, calendar: false,
       support_host: "https://www.tradingview.com",
@@ -239,6 +190,7 @@ function TradingViewChart({ ticker, height = 220 }) {
     });
     containerRef.current.appendChild(script);
   }, [ticker]);
+
   return <div ref={containerRef} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }} />;
 }
 
@@ -286,7 +238,7 @@ const CustomTooltip = ({ active, payload }) => {
   if (active && payload?.length) {
     return (
       <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 8, padding: "8px 14px", fontSize: 13, color: "#e6edf3" }}>
-        ${payload[0].value}
+        ${payload[0].value.toLocaleString()}
       </div>
     );
   }
@@ -297,6 +249,8 @@ const CustomTooltip = ({ active, payload }) => {
 function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) {
   const data = generateChartData(stock.base);
   const isUp = stock.change >= 0;
+  const typeStyle = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
+
   return (
     <div onClick={onClick} style={{
       background: isSelected ? "#161b22" : "#0d1117",
@@ -306,14 +260,21 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>
-            {stock.ticker}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>
+              {stock.ticker}
+            </div>
+            {stock.type && (
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5, padding: "1px 6px", borderRadius: 4, background: typeStyle.bg, color: typeStyle.color }}>
+                {stock.type}
+              </span>
+            )}
           </div>
-          <div style={{ fontSize: 11, color: "#8b949e", marginTop: 2 }}>{stock.name}</div>
+          <div style={{ fontSize: 11, color: "#8b949e" }}>{stock.name}</div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>
-            ${stock.price}
+            {stock.price >= 1000 ? `$${stock.price.toLocaleString()}` : `$${stock.price}`}
           </div>
           <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>
             {isUp ? "▲" : "▼"} {Math.abs(stock.change)}%
@@ -329,17 +290,11 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
                 <stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <Area type="monotone" dataKey="price"
-              stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={1.5}
-              fill={`url(#grad-${stock.ticker})`} dot={false} />
+            <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={1.5} fill={`url(#grad-${stock.ticker})`} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      {/* Sentiment bar at bottom of card */}
-      <SentimentBar
-        score={sentiment?.score ?? null}
-        loading={sentimentLoading}
-      />
+      <SentimentBar score={sentiment?.score ?? null} loading={sentimentLoading} />
     </div>
   );
 }
@@ -348,15 +303,26 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
 function MainChart({ stock }) {
   const data = generateChartData(stock.base, 60);
   const isUp = stock.change >= 0;
+  const typeStyle = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
+
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#f7c843", fontWeight: 700 }}>{stock.ticker}</span>
-          <span style={{ fontSize: 13, color: "#8b949e", marginLeft: 10 }}>{stock.name}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#f7c843", fontWeight: 700 }}>{stock.ticker}</span>
+            {stock.type && (
+              <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: typeStyle.bg, color: typeStyle.color }}>
+                {stock.type}
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: 13, color: "#8b949e" }}>{stock.name}</span>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, color: "#e6edf3", fontWeight: 700 }}>${stock.price}</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 24, color: "#e6edf3", fontWeight: 700 }}>
+            ${stock.price.toLocaleString()}
+          </div>
           <div style={{ fontSize: 13, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change)}% today</div>
         </div>
       </div>
@@ -370,7 +336,7 @@ function MainChart({ stock }) {
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
           <XAxis dataKey="day" tick={{ fill: "#8b949e", fontSize: 11 }} axisLine={false} tickLine={false} interval={9} />
-          <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} axisLine={false} tickLine={false} width={55} tickFormatter={v => `$${v}`} />
+          <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} axisLine={false} tickLine={false} width={70} tickFormatter={v => `$${v.toLocaleString()}`} />
           <Tooltip content={<CustomTooltip />} />
           <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={2} fill="url(#mainGrad)" dot={false} />
         </AreaChart>
@@ -415,7 +381,7 @@ export default function App() {
   const [activeTab, setActiveTab]               = useState("watchlist");
   const [messages, setMessages]                 = useState([{
     role: "assistant",
-    content: "Hello! I'm Quantiq, your AI-powered financial advisor. Ask me about stocks, type 'compare AAPL vs TSLA', or 'analyze portfolio AAPL TSLA NVDA'.",
+    content: "Hello! I'm Quantiq, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto. Try 'compare RELIANCE.NS vs TCS.NS' or 'what is Bitcoin doing today?'",
     sources: [],
   }]);
   const [input, setInput]                       = useState("");
@@ -443,28 +409,21 @@ export default function App() {
   const [triggeredNotifs, setTriggeredNotifs]   = useState([]);
 
   // Sentiment state
-  // sentiments: { [ticker]: { score, label, headline_count, headlines } | null }
   const [sentiments, setSentiments]             = useState({});
   const [sentimentLoading, setSentimentLoading] = useState({});
 
   const bottomRef = useRef(null);
 
-  useEffect(() => {
-    if (!getSessionId()) startSession();
-  }, []);
+  useEffect(() => { if (!getSessionId()) startSession(); }, []);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // ── Fetch sentiment for a ticker ──────────────────────
+  // ── Fetch sentiment ────────────────────────────────────
   const fetchSentiment = useCallback(async (ticker, name = "") => {
-    if (sentiments[ticker] !== undefined) return; // already fetched or loading
+    if (sentiments[ticker] !== undefined) return;
     setSentimentLoading(prev => ({ ...prev, [ticker]: true }));
     try {
-      const company = encodeURIComponent(name);
-      const res = await fetch(`${API_URL}/sentiment/${ticker}?company=${company}`);
-      if (!res.ok) throw new Error("sentiment fetch failed");
+      const res = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setSentiments(prev => ({ ...prev, [ticker]: data }));
     } catch {
@@ -473,32 +432,21 @@ export default function App() {
     setSentimentLoading(prev => ({ ...prev, [ticker]: false }));
   }, [sentiments]);
 
-  // ── Fetch sentiment for all watchlist stocks on mount ──
-  useEffect(() => {
-    WATCHLIST.forEach(s => fetchSentiment(s.ticker, s.name));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { WATCHLIST.forEach(s => fetchSentiment(s.ticker, s.name)); }, []); // eslint-disable-line
+  useEffect(() => { fetchSentiment(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker]); // eslint-disable-line
 
-  // ── Fetch sentiment for selected stock (center panel) ──
-  useEffect(() => {
-    fetchSentiment(selectedStock.ticker, selectedStock.name);
-  }, [selectedStock.ticker]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Poll for triggered alerts every 5 minutes ─────────
+  // ── Alert polling ──────────────────────────────────────
   useEffect(() => {
     const poll = async () => {
       const sessionId = getSessionId();
       if (!sessionId) return;
       try {
         const res = await fetch(`${API_URL}/check_alerts`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionId }),
         });
         const data = await res.json();
-        if (data.triggered?.length) {
-          setTriggeredNotifs(prev => [...prev, ...data.triggered]);
-          fetchAlerts();
-        }
+        if (data.triggered?.length) { setTriggeredNotifs(prev => [...prev, ...data.triggered]); fetchAlerts(); }
       } catch { }
     };
     poll();
@@ -511,11 +459,7 @@ export default function App() {
     const sessionId = getSessionId();
     if (!sessionId) return;
     try {
-      const res = await fetch(`${API_URL}/get_alerts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId }),
-      });
+      const res = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sessionId }) });
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : []);
     } catch { }
@@ -528,18 +472,8 @@ export default function App() {
     setAlertCreating(true);
     try {
       const sessionId = getSessionId() || await startSession();
-      await fetch(`${API_URL}/create_alert`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          ticker: alertTicker.toUpperCase().trim(),
-          threshold,
-          direction: alertDirection,
-        }),
-      });
-      setAlertTicker("");
-      setAlertThreshold("");
+      await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sessionId, ticker: alertTicker.toUpperCase().trim(), threshold, direction: alertDirection }) });
+      setAlertTicker(""); setAlertThreshold("");
       await fetchAlerts();
     } catch { }
     setAlertCreating(false);
@@ -549,11 +483,7 @@ export default function App() {
     const sessionId = getSessionId();
     if (!sessionId) return;
     try {
-      await fetch(`${API_URL}/delete_alert`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, alert_id: id }),
-      });
+      await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sessionId, alert_id: id }) });
       await fetchAlerts();
     } catch { }
   };
@@ -562,55 +492,39 @@ export default function App() {
 
   // ── Portfolio helpers ──────────────────────────────────
   const addToPortfolio = (ticker) => {
-    const t = ticker.toUpperCase().trim();
+    const t = ticker.trim();
     if (t && !portfolio.includes(t)) setPortfolio(prev => [...prev, t]);
   };
   const removeFromPortfolio = (ticker) => setPortfolio(prev => prev.filter(t => t !== ticker));
 
   const runPortfolioAnalysis = async (tickersOverride = null) => {
     const tickers = tickersOverride || portfolio;
-    if (tickers.length === 0) return;
+    if (!tickers.length) return;
     setPortfolioLoading(true);
     try {
       const sessionId = getSessionId() || await startSession();
-      const res = await fetch(`${API_URL}/portfolio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tickers, session_id: sessionId }),
-      });
+      const res = await fetch(`${API_URL}/portfolio`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers, session_id: sessionId }) });
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
       setPortfolioData(data);
-    } catch {
-      setPortfolioData({ error: "Failed to fetch portfolio data." });
-    }
+    } catch { setPortfolioData({ error: "Failed to fetch portfolio data." }); }
     setPortfolioLoading(false);
   };
 
   // ── Compare helpers ────────────────────────────────────
   const runComparison = async (a = null, b = null) => {
-    const ticker_a = (a || compareA).toUpperCase().trim();
-    const ticker_b = (b || compareB).toUpperCase().trim();
+    const ticker_a = (a || compareA).trim();
+    const ticker_b = (b || compareB).trim();
     if (!ticker_a || !ticker_b) return;
-    setCompareLoading(true);
-    setCompareData(null);
+    setCompareLoading(true); setCompareData(null);
     try {
       const sessionId = getSessionId() || await startSession();
-      const res = await fetch(`${API_URL}/compare`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker_a, ticker_b, session_id: sessionId }),
-      });
+      const res = await fetch(`${API_URL}/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticker_a, ticker_b, session_id: sessionId }) });
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
-      setCompareData(data);
-      setActiveTab("compare");
-      // pre-fetch sentiment for compared tickers
-      fetchSentiment(ticker_a);
-      fetchSentiment(ticker_b);
-    } catch {
-      setCompareData({ error: "Comparison failed. Please try again." });
-    }
+      setCompareData(data); setActiveTab("compare");
+      fetchSentiment(ticker_a); fetchSentiment(ticker_b);
+    } catch { setCompareData({ error: "Comparison failed. Please try again." }); }
     setCompareLoading(false);
   };
 
@@ -618,7 +532,7 @@ export default function App() {
   const sendMessage = async (question) => {
     if (!question.trim() || loading) return;
     const lower = question.toLowerCase();
-    const isCompareQuery  = lower.includes(" vs ") || lower.includes(" versus ") || lower.includes("compare ");
+    const isCompareQuery   = lower.includes(" vs ") || lower.includes(" versus ") || lower.includes("compare ");
     const isPortfolioQuery = lower.includes("portfolio") || lower.startsWith("track ") || lower.includes("analyze my") || lower.includes("analyze portfolio");
 
     setLoading(true);
@@ -628,33 +542,24 @@ export default function App() {
     if (isCompareQuery) {
       try {
         const sessionId = getSessionId() || await startSession();
-        const res = await fetch(`${API_URL}/compare/from-chat`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: question, session_id: sessionId }),
-        });
+        const res = await fetch(`${API_URL}/compare/from-chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: question, session_id: sessionId }) });
         const data = await res.json();
         if (data.session_id) setSessionId(data.session_id);
         if (data.ticker_a && data.ticker_b) {
-          setCompareA(data.ticker_a); setCompareB(data.ticker_b);
-          setCompareData(data); setActiveTab("compare");
+          setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data); setActiveTab("compare");
           fetchSentiment(data.ticker_a); fetchSentiment(data.ticker_b);
           setMessages(prev => [...prev, { role: "assistant", content: data.verdict, sources: ["Yahoo Finance (real-time)"], responseTime: null }]);
         } else {
           setMessages(prev => [...prev, { role: "assistant", content: data.detail || "Could not find two tickers. Try: 'compare AAPL vs TSLA'", sources: [] }]);
         }
-      } catch {
-        setMessages(prev => [...prev, { role: "assistant", content: "Comparison failed. Please try again.", sources: [] }]);
-      }
+      } catch { setMessages(prev => [...prev, { role: "assistant", content: "Comparison failed. Please try again.", sources: [] }]); }
       setLoading(false); return;
     }
 
     if (isPortfolioQuery) {
       try {
         const sessionId = getSessionId() || await startSession();
-        const res = await fetch(`${API_URL}/portfolio/from-chat`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: question, session_id: sessionId }),
-        });
+        const res = await fetch(`${API_URL}/portfolio/from-chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: question, session_id: sessionId }) });
         const data = await res.json();
         if (data.session_id) setSessionId(data.session_id);
         if (data.tickers) {
@@ -662,26 +567,19 @@ export default function App() {
           data.tickers.forEach(t => fetchSentiment(t));
           setMessages(prev => [...prev, { role: "assistant", content: data.summary, sources: ["Yahoo Finance (real-time)", "Yahoo Finance (earnings)"], responseTime: null }]);
         } else {
-          setMessages(prev => [...prev, { role: "assistant", content: data.detail || "No tickers found. Try: 'analyze portfolio AAPL TSLA NVDA'", sources: [] }]);
+          setMessages(prev => [...prev, { role: "assistant", content: data.detail || "No tickers found. Try: 'analyze portfolio AAPL BTC INFY.NS'", sources: [] }]);
         }
-      } catch {
-        setMessages(prev => [...prev, { role: "assistant", content: "Portfolio analysis failed. Please try again.", sources: [] }]);
-      }
+      } catch { setMessages(prev => [...prev, { role: "assistant", content: "Portfolio analysis failed. Please try again.", sources: [] }]); }
       setLoading(false); return;
     }
 
     try {
       const sessionId = getSessionId() || await startSession();
-      const res = await fetch(`${API_URL}/ask`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, include_sources: true, session_id: sessionId, time_range: timeRange }),
-      });
+      const res = await fetch(`${API_URL}/ask`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, include_sources: true, session_id: sessionId, time_range: timeRange }) });
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
       setMessages(prev => [...prev, { role: "assistant", content: data.answer, sources: data.sources, responseTime: data.response_time }]);
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Connection error. Make sure the Quantiq backend is running.", sources: [] }]);
-    }
+    } catch { setMessages(prev => [...prev, { role: "assistant", content: "Connection error. Make sure the Quantiq backend is running.", sources: [] }]); }
     setLoading(false);
   };
 
@@ -700,7 +598,7 @@ export default function App() {
     transition: "all 0.15s",
   });
 
-  const activeAlerts   = alerts.filter(a => !a.triggered);
+  const activeAlerts    = alerts.filter(a => !a.triggered);
   const triggeredAlerts = alerts.filter(a => a.triggered);
 
   return (
@@ -713,20 +611,11 @@ export default function App() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
         textarea:focus, input:focus, select { outline: none; }
-        .alert-notif {
-          display: flex; align-items: flex-start; gap: 8px;
-          background: #1a2332; border: 1px solid #2d4a6e;
-          border-radius: 10px; padding: 10px 12px;
-          font-size: 12px; color: #79c0ff; margin-bottom: 8px;
-          animation: slideIn 0.2s ease;
-        }
-        @keyframes slideIn {
-          from { opacity: 0; transform: translateY(-6px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
+        .alert-notif { display: flex; align-items: flex-start; gap: 8px; background: #1a2332; border: 1px solid #2d4a6e; border-radius: 10px; padding: 10px 12px; font-size: 12px; color: #79c0ff; margin-bottom: 8px; animation: slideIn 0.2s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
-      {/* ── Alert toasts ── */}
+      {/* Alert toasts */}
       {triggeredNotifs.length > 0 && (
         <div style={{ position: "fixed", top: 80, right: 20, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, maxWidth: 300 }}>
           {triggeredNotifs.map((n, i) => (
@@ -749,7 +638,7 @@ export default function App() {
           <div style={{ width: 36, height: 36, background: "#f7c843", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>💹</div>
           <div>
             <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 16, fontWeight: 700, color: "#e6edf3" }}>Quantiq</div>
-            <div style={{ fontSize: 11, color: "#8b949e" }}>Real-time market intelligence</div>
+            <div style={{ fontSize: 11, color: "#8b949e" }}>US · India · Crypto · Real-time</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -767,7 +656,7 @@ export default function App() {
       {/* Body */}
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "300px 1fr 380px", overflow: "hidden", height: "calc(100vh - 69px)" }}>
 
-        {/* ── Left Panel ── */}
+        {/* Left Panel */}
         <div style={{ borderRight: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117" }}>
           <div style={{ display: "flex", borderBottom: "1px solid #21262d" }}>
             <button style={tabStyle("watchlist")} onClick={() => setActiveTab("watchlist")}>Watch</button>
@@ -785,7 +674,7 @@ export default function App() {
 
           <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
 
-            {/* ── Watchlist Tab ── */}
+            {/* Watchlist Tab */}
             {activeTab === "watchlist" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {WATCHLIST.map(stock => (
@@ -799,14 +688,14 @@ export default function App() {
               </div>
             )}
 
-            {/* ── Compare Tab ── */}
+            {/* Compare Tab */}
             {activeTab === "compare" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 4 }}>Enter two tickers to compare side by side</div>
-                <input value={compareA} onChange={e => setCompareA(e.target.value.toUpperCase())} placeholder="Ticker A (e.g. AAPL)"
+                <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 4 }}>Works with US, India (.NS/.BO) and crypto</div>
+                <input value={compareA} onChange={e => setCompareA(e.target.value.toUpperCase())} placeholder="Ticker A (e.g. RELIANCE.NS)"
                   style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
                 <div style={{ textAlign: "center", fontSize: 11, color: "#8b949e" }}>vs</div>
-                <input value={compareB} onChange={e => setCompareB(e.target.value.toUpperCase())} placeholder="Ticker B (e.g. TSLA)"
+                <input value={compareB} onChange={e => setCompareB(e.target.value.toUpperCase())} placeholder="Ticker B (e.g. TCS.NS)"
                   style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }}
                   onKeyDown={e => e.key === "Enter" && runComparison()} />
                 <button onClick={() => runComparison()} disabled={compareLoading || !compareA || !compareB}
@@ -827,14 +716,14 @@ export default function App() {
               </div>
             )}
 
-            {/* ── Portfolio Tab ── */}
+            {/* Portfolio Tab */}
             {activeTab === "portfolio" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 4 }}>Add tickers to analyze your portfolio</div>
+                <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 4 }}>Mix US stocks, India (.NS) and crypto</div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <input value={portfolioInput} onChange={e => setPortfolioInput(e.target.value.toUpperCase())}
+                  <input value={portfolioInput} onChange={e => setPortfolioInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") { addToPortfolio(portfolioInput); setPortfolioInput(""); } }}
-                    placeholder="Add ticker..."
+                    placeholder="e.g. AAPL, BTC, INFY.NS"
                     style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#e6edf3", fontFamily: "'DM Sans', sans-serif" }} />
                   <button onClick={() => { addToPortfolio(portfolioInput); setPortfolioInput(""); }}
                     style={{ background: "#21262d", border: "none", borderRadius: 8, padding: "6px 10px", color: "#f7c843", fontSize: 16, cursor: "pointer", fontWeight: 700 }}>+</button>
@@ -850,35 +739,43 @@ export default function App() {
                 {portfolio.length > 0 && (
                   <button onClick={() => runPortfolioAnalysis()} disabled={portfolioLoading}
                     style={{ width: "100%", background: portfolioLoading ? "#21262d" : "#f7c843", color: portfolioLoading ? "#8b949e" : "#0d1117", border: "none", borderRadius: 10, padding: "8px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s" }}>
-                    {portfolioLoading ? "Analyzing..." : `Analyze ${portfolio.length} stock${portfolio.length > 1 ? "s" : ""}`}
+                    {portfolioLoading ? "Analyzing..." : `Analyze ${portfolio.length} asset${portfolio.length > 1 ? "s" : ""}`}
                   </button>
                 )}
                 {portfolioData && !portfolioData.error && portfolioData.tickers && (
                   <div style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 12 }}>
                     {portfolioData.tickers.map(ticker => {
-                      const s = portfolioData.breakdown?.[ticker]?.stock || "";
-                      const price  = s.match(/Current Price: \$([^\n]+)/)?.[1];
-                      const change = s.match(/5-Day Change: ([^\n]+)/)?.[1];
-                      const pe     = s.match(/P\/E Ratio: ([^\n]+)/)?.[1];
-                      const eps    = s.match(/EPS: ([^\n]+)/)?.[1];
-                      const relVol = s.match(/Relative Volume: ([^\n]+)/)?.[1];
-                      const sent   = sentiments[ticker];
+                      const s         = portfolioData.breakdown?.[ticker]?.stock || "";
+                      const assetType = portfolioData.breakdown?.[ticker]?.asset_type || "us_stock";
+                      const isCrypto  = assetType === "crypto";
+                      const isIndia   = assetType === "india_stock";
+                      const priceMatch = isCrypto ? s.match(/Price \(USD\): \$([^\n]+)/) : s.match(/Current Price: [₹$]([^\n]+)/);
+                      const price   = priceMatch?.[1];
+                      const change  = s.match(/(?:5-Day|24h) Change: ([^\n]+)/)?.[1];
+                      const pe      = s.match(/P\/E Ratio: ([^\n]+)/)?.[1];
+                      const mcap    = s.match(/Market Cap: [₹$]?([^\n]+)/)?.[1];
+                      const sent    = sentiments[ticker];
+                      const ts      = isCrypto ? TYPE_STYLES.Crypto : isIndia ? TYPE_STYLES.India : TYPE_STYLES.US;
+                      const tl      = isCrypto ? "Crypto" : isIndia ? "India" : "US";
                       return (
                         <div key={ticker} style={{ padding: "8px 0", borderBottom: "1px solid #21262d" }}>
                           <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{ticker}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{ticker}</span>
+                              <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: ts.bg, color: ts.color }}>{tl}</span>
+                            </div>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 13, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }}>{price ? `$${price}` : "—"}</div>
+                              <div style={{ fontSize: 13, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }}>
+                                {price ? (isIndia ? `₹${price}` : `$${price}`) : "—"}
+                              </div>
                               <div style={{ fontSize: 11, color: change?.includes("-") ? "#f85149" : "#3fb950" }}>{change || "—"}</div>
                             </div>
                           </div>
                           <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
-                            {pe     && <span style={{ fontSize: 10, color: "#8b949e" }}>P/E {pe}</span>}
-                            {eps    && <span style={{ fontSize: 10, color: "#8b949e" }}>EPS {eps}</span>}
-                            {relVol && <span style={{ fontSize: 10, color: "#8b949e" }}>Vol {relVol}</span>}
-                            {sent   && <span style={{ fontSize: 10, color: sentimentColor(sent.score), fontWeight: 600 }}>● {sent.label} {sent.score}</span>}
+                            {pe   && <span style={{ fontSize: 10, color: "#8b949e" }}>P/E {pe}</span>}
+                            {mcap && <span style={{ fontSize: 10, color: "#8b949e" }}>MCap {mcap.slice(0, 12)}</span>}
+                            {sent && <span style={{ fontSize: 10, color: sentimentColor(sent.score), fontWeight: 600 }}>● {sent.label} {sent.score}</span>}
                           </div>
-                          {/* Mini sentiment bar in portfolio list */}
                           <SentimentBar score={sent?.score ?? null} loading={sentimentLoading[ticker] ?? false} />
                         </div>
                       );
@@ -894,7 +791,7 @@ export default function App() {
               </div>
             )}
 
-            {/* ── Alerts Tab ── */}
+            {/* Alerts Tab */}
             {activeTab === "alerts" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {triggeredNotifs.map((n, i) => (
@@ -907,11 +804,11 @@ export default function App() {
                     <button onClick={() => dismissNotif(i)} style={{ background: "none", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 13, padding: 0 }}>✕</button>
                   </div>
                 ))}
-                <div style={{ fontSize: 11, color: "#8b949e" }}>Set a price alert — get notified in-app and by email</div>
-                <input value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="Ticker (e.g. AAPL)"
+                <div style={{ fontSize: 11, color: "#8b949e" }}>Set a price alert — works for stocks, India & crypto</div>
+                <input value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="Ticker (AAPL, BTC, INFY.NS…)"
                   style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <input value={alertThreshold} onChange={e => setAlertThreshold(e.target.value)} placeholder="Price ($)" type="number" min="0" step="0.01"
+                  <input value={alertThreshold} onChange={e => setAlertThreshold(e.target.value)} placeholder="Price" type="number" min="0" step="0.01"
                     style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
                   <select value={alertDirection} onChange={e => setAlertDirection(e.target.value)}
                     style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "#e6edf3", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
@@ -961,7 +858,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Center Panel ── */}
+        {/* Center Panel */}
         <div style={{ padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
           {compareData && !compareData.error && compareData.ticker_a ? (
             <>
@@ -969,9 +866,7 @@ export default function App() {
                 <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, color: "#f7c843", fontWeight: 700 }}>{compareData.ticker_a}</span>
                 <span style={{ fontSize: 13, color: "#8b949e" }}>vs</span>
                 <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, color: "#f7c843", fontWeight: 700 }}>{compareData.ticker_b}</span>
-                <button onClick={() => setCompareData(null)} style={{ marginLeft: "auto", background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#8b949e", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                  ← Back
-                </button>
+                <button onClick={() => setCompareData(null)} style={{ marginLeft: "auto", background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#8b949e", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>← Back</button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div>
@@ -984,19 +879,9 @@ export default function App() {
                 </div>
               </div>
               <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />
-
-              {/* Sentiment gauges side by side for compared tickers */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <SentimentGauge
-                  ticker={compareData.ticker_a}
-                  sentiment={sentiments[compareData.ticker_a] ?? null}
-                  loading={sentimentLoading[compareData.ticker_a] ?? false}
-                />
-                <SentimentGauge
-                  ticker={compareData.ticker_b}
-                  sentiment={sentiments[compareData.ticker_b] ?? null}
-                  loading={sentimentLoading[compareData.ticker_b] ?? false}
-                />
+                <SentimentGauge ticker={compareData.ticker_a} sentiment={sentiments[compareData.ticker_a] ?? null} loading={sentimentLoading[compareData.ticker_a] ?? false} />
+                <SentimentGauge ticker={compareData.ticker_b} sentiment={sentiments[compareData.ticker_b] ?? null} loading={sentimentLoading[compareData.ticker_b] ?? false} />
               </div>
             </>
           ) : (
@@ -1015,16 +900,9 @@ export default function App() {
                   </div>
                 ))}
               </div>
-
-              {/* Sentiment gauge for selected stock */}
-              <SentimentGauge
-                ticker={selectedStock.ticker}
-                sentiment={sentiments[selectedStock.ticker] ?? null}
-                loading={sentimentLoading[selectedStock.ticker] ?? false}
-              />
+              <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
             </>
           )}
-
           <div>
             <div style={{ fontSize: 11, color: "#8b949e", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Quick Ask</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -1039,7 +917,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Right Panel — Chat ── */}
+        {/* Right Panel — Chat */}
         <div style={{ borderLeft: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117" }}>
           <div style={{ padding: "12px 20px", borderBottom: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#e6edf3" }}>Quantiq Advisor</span>
@@ -1063,7 +941,7 @@ export default function App() {
           </div>
           <div style={{ padding: "16px 20px", borderTop: "1px solid #21262d", display: "flex", gap: 10 }}>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage(input)}
-              placeholder="Ask or type 'compare AAPL vs TSLA'..."
+              placeholder="Ask about stocks, crypto, Indian markets…"
               style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#e6edf3", fontFamily: "'DM Sans', sans-serif" }} />
             <button onClick={() => sendMessage(input)} disabled={loading}
               style={{ background: loading ? "#21262d" : "#f7c843", color: loading ? "#8b949e" : "#0d1117", border: "none", borderRadius: 12, padding: "10px 16px", fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", transition: "all 0.15s", fontFamily: "'DM Sans', sans-serif" }}>

@@ -9,4 +9,3 @@ feedparser
 redis
 vaderSentiment
 pycoingecko
-cachetools

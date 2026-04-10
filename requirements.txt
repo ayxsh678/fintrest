@@ -12,4 +12,5 @@ accelerate
 bitsandbytes
 newsapi-python
 vaderSentiment
+pycoingecko
 # force rebuild
