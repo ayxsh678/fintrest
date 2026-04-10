@@ -452,62 +452,35 @@ export default function App() {
   // ── Auth state ──────────────────────────────────────
   const [user, setUserState]                    = useState(getUser());
   const [showAuth, setShowAuth]                 = useState(!getToken());
-  const [_serverWatchlist, setServerWatchlist]   = useState([]);
 
-  const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); loadWatchlist(); };
+  const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); };
   const handleLogout = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
 
-  const loadWatchlist = async () => {
-    if (!getToken()) return;
-    try {
-      const res = await fetch(`${API_URL}/watchlist`, { headers: getAuthHeaders() });
-      const data = await res.json();
-      setServerWatchlist(data.watchlist || []);
-    } catch {}
-  };
-
-  const _addToServerWatchlist = async (ticker) => {
-    if (!getToken()) return;
-    try {
-      await fetch(`${API_URL}/watchlist`, { method: "POST", headers: getAuthHeaders(), body: JSON.stringify({ ticker }) });
-      await loadWatchlist();
-    } catch {}
-  };
-
-  const _removeFromServerWatchlist = async (ticker) => {
-    if (!getToken()) return;
-    try {
-      await fetch(`${API_URL}/watchlist/${ticker}`, { method: "DELETE", headers: getAuthHeaders() });
-      await loadWatchlist();
-    } catch {}
-  };
-
-  useEffect(() => { loadWatchlist(); }, []); // eslint-disable-line
-
+  // ── Stock & UI state ──────────────────────────────────
   const [selectedStock, setSelectedStock]       = useState(WATCHLIST[0]);
   const [activeTab, setActiveTab]               = useState("watchlist");
   const [messages, setMessages]                 = useState([{
     role: "assistant",
-    content: "Hello! I'm Quantiq, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto. Try 'compare RELIANCE.NS vs TCS.NS' or 'what is Bitcoin doing today?'",
+    content: "Hello! I'm Quantiq, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto.",
     sources: [],
   }]);
   const [input, setInput]                       = useState("");
   const [loading, setLoading]                   = useState(false);
   const [timeRange, setTimeRange]               = useState("7d");
 
-  // Portfolio state
+  // ── Portfolio state ───────────────────────────────────
   const [portfolio, setPortfolio]               = useState([]);
   const [portfolioInput, setPortfolioInput]     = useState("");
   const [portfolioData, setPortfolioData]       = useState(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
 
-  // Compare state
+  // ── Compare state ─────────────────────────────────────
   const [compareA, setCompareA]                 = useState("");
   const [compareB, setCompareB]                 = useState("");
   const [compareData, setCompareData]           = useState(null);
   const [compareLoading, setCompareLoading]     = useState(false);
 
-  // Alerts state
+  // ── Alerts state ──────────────────────────────────────
   const [alerts, setAlerts]                     = useState([]);
   const [alertTicker, setAlertTicker]           = useState("");
   const [alertThreshold, setAlertThreshold]     = useState("");
@@ -515,7 +488,7 @@ export default function App() {
   const [alertCreating, setAlertCreating]       = useState(false);
   const [triggeredNotifs, setTriggeredNotifs]   = useState([]);
 
-  // Sentiment state
+  // ── Sentiment state ───────────────────────────────────
   const [sentiments, setSentiments]             = useState({});
   const [sentimentLoading, setSentimentLoading] = useState({});
 
@@ -554,12 +527,12 @@ export default function App() {
         });
         const data = await res.json();
         if (data.triggered?.length) { setTriggeredNotifs(prev => [...prev, ...data.triggered]); fetchAlerts(); }
-      } catch { }
+      } catch {}
     };
     poll();
     const interval = setInterval(poll, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // eslint-disable-line
 
   // ── Alert helpers ──────────────────────────────────────
   const fetchAlerts = async () => {
@@ -569,7 +542,7 @@ export default function App() {
       const res = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sessionId }) });
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : []);
-    } catch { }
+    } catch {}
   };
 
   const createAlert = async () => {
@@ -582,7 +555,7 @@ export default function App() {
       await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sessionId, ticker: alertTicker.toUpperCase().trim(), threshold, direction: alertDirection }) });
       setAlertTicker(""); setAlertThreshold("");
       await fetchAlerts();
-    } catch { }
+    } catch {}
     setAlertCreating(false);
   };
 
