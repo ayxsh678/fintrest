@@ -8,3 +8,4 @@ cachetools
 feedparser
 redis
 vaderSentimentpycoingecko
+cachetools
