@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict
 import logging
 
-from sentiment import get_sentiment
+from rag.sentiment import get_sentiment
 
 logger = logging.getLogger(__name__)
 
