@@ -6,6 +6,16 @@ import {
 
 const API_URL = "https://quantiq-go.onrender.com";
 
+
+// ── Auth helpers ────────────────────────────────────────
+const getToken = () => localStorage.getItem("quantiq_token");
+const setToken = (t) => localStorage.setItem("quantiq_token", t);
+const removeToken = () => localStorage.removeItem("quantiq_token");
+const getUser = () => { try { return JSON.parse(localStorage.getItem("quantiq_user")); } catch { return null; } };
+const setUser = (u) => localStorage.setItem("quantiq_user", JSON.stringify(u));
+const removeUser = () => localStorage.removeItem("quantiq_user");
+const getAuthHeaders = () => ({ "Content-Type": "application/json", ...(getToken() ? { "Authorization": `Bearer ${getToken()}` } : {}) });
+
 // ── Chart data ──────────────────────────────────────────
 const generateChartData = (base, points = 30) => {
   let price = base;
@@ -375,8 +385,105 @@ function ChatBubble({ msg }) {
   );
 }
 
+
+// ── Auth Modal ──────────────────────────────────────────
+function AuthModal({ onSuccess }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    if (!email || !password) return;
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${API_URL}/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Something went wrong"); setLoading(false); return; }
+      setToken(data.token);
+      setUser({ email: data.email, user_id: data.user_id });
+      onSuccess();
+    } catch { setError("Connection error"); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(1,4,9,0.85)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: 32, width: 360, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
+          <div style={{ width: 32, height: 32, background: "#f7c843", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💹</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "#e6edf3" }}>Quantiq</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+          {["login", "register"].map(m => (
+            <button key={m} onClick={() => { setMode(m); setError(""); }}
+              style={{ flex: 1, padding: "8px 0", fontSize: 12, fontWeight: 700, textTransform: "capitalize", border: "1px solid", borderRadius: 10, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s",
+                background: mode === m ? "#f7c843" : "transparent",
+                color: mode === m ? "#0d1117" : "#8b949e",
+                borderColor: mode === m ? "#f7c843" : "#21262d" }}>
+              {m === "login" ? "Sign In" : "Create Account"}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email"
+            style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#e6edf3", fontFamily: "'DM Sans', sans-serif" }} />
+          <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" type="password"
+            onKeyDown={e => e.key === "Enter" && submit()}
+            style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#e6edf3", fontFamily: "'DM Sans', sans-serif" }} />
+          {error && <div style={{ fontSize: 12, color: "#f85149" }}>{error}</div>}
+          <button onClick={submit} disabled={loading || !email || !password}
+            style={{ width: "100%", background: (loading || !email || !password) ? "#21262d" : "#f7c843", color: (loading || !email || !password) ? "#8b949e" : "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", marginTop: 4 }}>
+            {loading ? "..." : mode === "login" ? "Sign In" : "Create Account"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ────────────────────────────────────────────
 export default function App() {
+  // ── Auth state ──────────────────────────────────────
+  const [user, setUserState]                    = useState(getUser());
+  const [showAuth, setShowAuth]                 = useState(!getToken());
+  const [serverWatchlist, setServerWatchlist]   = useState([]);
+
+  const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); loadWatchlist(); };
+  const handleLogout = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
+
+  const loadWatchlist = async () => {
+    if (!getToken()) return;
+    try {
+      const res = await fetch(`${API_URL}/watchlist`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      setServerWatchlist(data.watchlist || []);
+    } catch {}
+  };
+
+  const addToServerWatchlist = async (ticker) => {
+    if (!getToken()) return;
+    try {
+      await fetch(`${API_URL}/watchlist`, { method: "POST", headers: getAuthHeaders(), body: JSON.stringify({ ticker }) });
+      await loadWatchlist();
+    } catch {}
+  };
+
+  const removeFromServerWatchlist = async (ticker) => {
+    if (!getToken()) return;
+    try {
+      await fetch(`${API_URL}/watchlist/${ticker}`, { method: "DELETE", headers: getAuthHeaders() });
+      await loadWatchlist();
+    } catch {}
+  };
+
+  useEffect(() => { loadWatchlist(); }, []); // eslint-disable-line
+
   const [selectedStock, setSelectedStock]       = useState(WATCHLIST[0]);
   const [activeTab, setActiveTab]               = useState("watchlist");
   const [messages, setMessages]                 = useState([{
@@ -602,6 +709,8 @@ export default function App() {
   const triggeredAlerts = alerts.filter(a => a.triggered);
 
   return (
+    <>
+    {showAuth && <AuthModal onSuccess={handleAuthSuccess} />}
     <div style={{ minHeight: "100vh", background: "#010409", fontFamily: "'DM Sans', sans-serif", color: "#e6edf3", display: "flex", flexDirection: "column" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500;700&display=swap');
@@ -650,6 +759,14 @@ export default function App() {
             onMouseLeave={e => { e.target.style.borderColor = "#21262d"; e.target.style.color = "#8b949e"; }}>
             + New chat
           </button>
+          {user && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, color: "#8b949e" }}>{user.email}</span>
+              <button onClick={handleLogout} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#f85149", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -951,5 +1068,6 @@ export default function App() {
         </div>
       </div>
     </div>
+    </>
   );
 }
