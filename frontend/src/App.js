@@ -452,7 +452,7 @@ export default function App() {
   // ── Auth state ──────────────────────────────────────
   const [user, setUserState]                    = useState(getUser());
   const [showAuth, setShowAuth]                 = useState(!getToken());
-  const [serverWatchlist, setServerWatchlist]   = useState([]);
+  const [_serverWatchlist, setServerWatchlist]   = useState([]);
 
   const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); loadWatchlist(); };
   const handleLogout = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
@@ -466,7 +466,7 @@ export default function App() {
     } catch {}
   };
 
-  const addToServerWatchlist = async (ticker) => {
+  const _addToServerWatchlist = async (ticker) => {
     if (!getToken()) return;
     try {
       await fetch(`${API_URL}/watchlist`, { method: "POST", headers: getAuthHeaders(), body: JSON.stringify({ ticker }) });
@@ -474,7 +474,7 @@ export default function App() {
     } catch {}
   };
 
-  const removeFromServerWatchlist = async (ticker) => {
+  const _removeFromServerWatchlist = async (ticker) => {
     if (!getToken()) return;
     try {
       await fetch(`${API_URL}/watchlist/${ticker}`, { method: "DELETE", headers: getAuthHeaders() });
