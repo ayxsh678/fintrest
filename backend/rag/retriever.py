@@ -9,6 +9,7 @@ from cachetools import TTLCache
 from threading import Lock
 from rag.crypto import get_coin_id, get_crypto_data, get_crypto_news, KNOWN_COINS
 from rag.india_stocks import extract_india_ticker, get_india_stock_data, INDIA_COMPANY_MAP
+from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot
 
 NEWS_API_KEY     = os.getenv("NEWS_API_KEY")
 TAKETODAY_FEED   = "https://taketoday.co/feed"
@@ -55,12 +56,12 @@ KNOWN_TICKERS = set(COMPANY_MAP.values()) | {
 # ── Asset type detection ───────────────────────────────
 
 def detect_asset_type(query: str) -> dict:
-    """
-    Returns dict with keys:
-      type: 'us_stock' | 'india_stock' | 'crypto' | 'unknown'
-      identifier: ticker or coin_id
-    """
     query_lower = query.lower()
+
+    # Forex first
+    forex_pair = detect_forex_query(query)
+    if forex_pair:
+        return {"type": "forex", "identifier": forex_pair}
 
     # Crypto keywords
     crypto_keywords = ["crypto", "bitcoin", "ethereum", "coin", "token",
@@ -71,7 +72,6 @@ def detect_asset_type(query: str) -> dict:
         if coin_id:
             return {"type": "crypto", "identifier": coin_id}
 
-    # Check crypto map directly
     for word in query_lower.split():
         coin_id = get_coin_id(word)
         if coin_id:
@@ -85,12 +85,10 @@ def detect_asset_type(query: str) -> dict:
         if ticker:
             return {"type": "india_stock", "identifier": ticker}
 
-    # Check India company map
     india_ticker = extract_india_ticker(query)
     if india_ticker:
         return {"type": "india_stock", "identifier": india_ticker}
 
-    # US stock
     us_ticker = extract_us_ticker(query)
     if us_ticker:
         return {"type": "us_stock", "identifier": us_ticker}
@@ -111,7 +109,6 @@ def extract_us_ticker(query: str) -> str | None:
 
 
 def extract_ticker(query: str) -> str | None:
-    """Backward-compatible — returns US ticker only."""
     return extract_us_ticker(query)
 
 
@@ -336,7 +333,6 @@ def build_context(query: str, time_range: str = "7d") -> str:
     asset_type = asset["type"]
     identifier = asset["identifier"]
 
-    # TakeToday first — always
     taketoday     = get_taketoday_news(query)
     news          = get_financial_news(query, identifier, time_range=time_range)
     context_parts = []
@@ -346,7 +342,13 @@ def build_context(query: str, time_range: str = "7d") -> str:
     if news:
         context_parts.append(news)
 
-    if asset_type == "crypto" and identifier:
+    if asset_type == "forex":
+        if identifier == "ALL":
+            context_parts.append(get_all_forex_snapshot())
+        else:
+            context_parts.append(get_forex_data(identifier))
+
+    elif asset_type == "crypto" and identifier:
         context_parts.append(get_crypto_data(identifier))
         trending = get_crypto_news(identifier)
         if trending:

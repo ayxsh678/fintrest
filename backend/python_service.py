@@ -6,7 +6,12 @@ from rag.comparison import build_comparison_context, extract_comparison_tickers,
 from rag.memory import create_session, get_history, append_to_history, clear_session
 from rag.alerts import create_alert, get_alerts, delete_alert, check_alerts
 from rag.sentiment import get_sentiment
-from model.inference import generate_response, generate_portfolio_summary, generate_comparison_verdict
+from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot, CURRENCY_PAIRS
+from model.inference import (
+    generate_response, generate_portfolio_summary,
+    generate_comparison_verdict, generate_forex_insight,
+    explain_term
+)
 import os
 import uvicorn
 
@@ -39,6 +44,20 @@ class CompareRequest(BaseModel):
 
 class CompareFromChatRequest(BaseModel):
     query: str
+    session_id: str | None = None
+
+class ForexRequest(BaseModel):
+    pair: str
+    session_id: str | None = None
+
+class ForexFromChatRequest(BaseModel):
+    query: str
+    session_id: str | None = None
+
+class ExplainRequest(BaseModel):
+    term: str
+    stock: str | None = None
+    context: str | None = None
     session_id: str | None = None
 
 class AlertCreateRequest(BaseModel):
@@ -84,6 +103,17 @@ class CompareResponse(BaseModel):
     data_a: dict
     data_b: dict
     verdict: str
+    session_id: str
+
+class ForexResponse(BaseModel):
+    pair: str
+    data: str
+    insight: str
+    session_id: str
+
+class ExplainResponse(BaseModel):
+    term: str
+    explanation: str
     session_id: str
 
 class SentimentResponse(BaseModel):
@@ -143,8 +173,8 @@ def get_response(req: GenerateRequest):
         raise HTTPException(status_code=400, detail="Context cannot be empty")
 
     session_id = req.session_id or create_session()
-    history = get_history(session_id)
-    answer = generate_response(req.question, req.context, history=history)
+    history    = get_history(session_id)
+    answer     = generate_response(req.question, req.context, history=history)
     append_to_history(session_id, req.question, answer)
 
     return GenerateResponse(answer=answer, session_id=session_id)
@@ -183,9 +213,9 @@ def analyze_portfolio(req: PortfolioRequest):
         raise HTTPException(status_code=400, detail="Maximum 20 tickers per portfolio")
 
     session_id = req.session_id or create_session()
-    breakdown = get_portfolio_data(tickers)
-    context = build_portfolio_context(tickers)
-    summary = generate_portfolio_summary(tickers, context)
+    breakdown  = get_portfolio_data(tickers)
+    context    = build_portfolio_context(tickers)
+    summary    = generate_portfolio_summary(tickers, context)
     append_to_history(session_id, f"Analyze portfolio: {', '.join(tickers)}", summary)
 
     return PortfolioResponse(
@@ -220,15 +250,11 @@ def compare_stocks(req: CompareRequest):
         raise HTTPException(status_code=400, detail="Tickers must be different")
 
     session_id = req.session_id or create_session()
-    data = get_comparison_data(ticker_a, ticker_b)
-    context = build_comparison_context(ticker_a, ticker_b)
-    verdict = generate_comparison_verdict(ticker_a, ticker_b, context)
+    data       = get_comparison_data(ticker_a, ticker_b)
+    context    = build_comparison_context(ticker_a, ticker_b)
+    verdict    = generate_comparison_verdict(ticker_a, ticker_b, context)
 
-    append_to_history(
-        session_id,
-        f"Compare {ticker_a} vs {ticker_b}",
-        verdict
-    )
+    append_to_history(session_id, f"Compare {ticker_a} vs {ticker_b}", verdict)
 
     return CompareResponse(
         ticker_a=ticker_a,
@@ -256,6 +282,73 @@ def compare_from_chat(req: CompareFromChatRequest):
     ))
 
 
+# ── Forex ──────────────────────────────────────────────
+
+@app.get("/forex/pairs")
+def list_forex_pairs():
+    return {
+        "pairs": [
+            {"pair": k, "name": v[2]}
+            for k, v in CURRENCY_PAIRS.items()
+        ]
+    }
+
+
+@app.post("/forex", response_model=ForexResponse)
+def get_forex(req: ForexRequest):
+    pair = req.pair.upper().strip()
+    if pair not in CURRENCY_PAIRS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported pair. Supported: {', '.join(CURRENCY_PAIRS.keys())}"
+        )
+
+    session_id = req.session_id or create_session()
+    forex_data = get_forex_data(pair)
+    news       = get_financial_news_for_forex(pair)
+    insight    = generate_forex_insight(pair, forex_data, news)
+
+    append_to_history(session_id, f"Forex analysis: {pair}", insight)
+
+    return ForexResponse(
+        pair=pair,
+        data=forex_data,
+        insight=insight,
+        session_id=session_id
+    )
+
+
+@app.post("/forex/from-chat", response_model=ForexResponse)
+def forex_from_chat(req: ForexFromChatRequest):
+    pair = detect_forex_query(req.query)
+    if not pair or pair == "ALL":
+        pair = "USD/INR"
+    return get_forex(ForexRequest(pair=pair, session_id=req.session_id))
+
+
+# ── Explain (beginner mode) ────────────────────────────
+
+@app.post("/explain", response_model=ExplainResponse)
+def explain(req: ExplainRequest):
+    if not req.term.strip():
+        raise HTTPException(status_code=400, detail="Term cannot be empty")
+
+    session_id  = req.session_id or create_session()
+    explanation = explain_term(
+        req.term,
+        context=req.context or "",
+        stock=req.stock or ""
+    )
+
+    append_to_history(session_id, f"Explain {req.term} for beginner", explanation)
+
+    return ExplainResponse(
+        term=req.term,
+        explanation=explanation,
+        session_id=session_id
+    )
+
+
 # ── Alerts ─────────────────────────────────────────────
 
 @app.post("/create_alert")
@@ -265,13 +358,12 @@ def route_create_alert(req: AlertCreateRequest):
         raise HTTPException(status_code=400, detail="direction must be 'above' or 'below'")
     if req.threshold <= 0:
         raise HTTPException(status_code=400, detail="threshold must be a positive number")
-    alert = create_alert(
+    return create_alert(
         session_id=req.session_id,
         ticker=req.ticker,
         threshold=req.threshold,
         direction=direction,
     )
-    return alert
 
 
 @app.post("/get_alerts")
@@ -289,6 +381,15 @@ def route_delete_alert(req: AlertDeleteRequest):
 def route_check_alerts(req: AlertCheckRequest):
     triggered = check_alerts(req.session_id)
     return {"triggered": triggered}
+
+
+# ── Helper (internal) ──────────────────────────────────
+
+def get_financial_news_for_forex(pair: str) -> str:
+    """Fetch news relevant to a forex pair for LLM context."""
+    from rag.retriever import get_financial_news
+    query = pair.replace("/", " ")
+    return get_financial_news(query, time_range="7d")
 
 
 # ── Entry point ────────────────────────────────────────

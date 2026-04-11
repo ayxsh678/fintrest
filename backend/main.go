@@ -33,7 +33,7 @@ type QueryResponse struct {
 	SessionID    string   `json:"session_id"`
 }
 
-// ── Active session tracking (for alert polling) ─────────
+// ── Active session tracking ────────────────────────────
 
 var (
 	activeSessions   = make(map[string]struct{})
@@ -59,7 +59,7 @@ func getActiveSessions() []string {
 	return ids
 }
 
-// ── Global config ───────────────────────────────────────
+// ── Global config ──────────────────────────────────────
 
 var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
@@ -73,7 +73,7 @@ func pythonURL() string {
 	return strings.TrimSuffix(url, "/")
 }
 
-// ── Helpers ─────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────
 
 func buildContext(question, timeRange string) string {
 	payload, err := json.Marshal(map[string]string{
@@ -146,6 +146,15 @@ func detectSources(context string) []string {
 	if strings.Contains(context, "Stock:") {
 		sources = append(sources, "Yahoo Finance (real-time)")
 	}
+	if strings.Contains(context, "Crypto:") {
+		sources = append(sources, "CoinGecko (real-time)")
+	}
+	if strings.Contains(context, "Forex:") {
+		sources = append(sources, "Open Exchange Rates")
+	}
+	if strings.Contains(context, "NSE/BSE") {
+		sources = append(sources, "Yahoo Finance (NSE/BSE)")
+	}
 	if strings.Contains(context, "Recent Financial News:") {
 		sources = append(sources, "NewsAPI")
 	}
@@ -174,8 +183,6 @@ func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
 	return result, nil
 }
 
-// proxyPostSlice is like proxyPost but returns a JSON array.
-// Used for /get_alerts which returns a list.
 func proxyPostSlice(path string, body interface{}) ([]interface{}, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -195,51 +202,45 @@ func proxyPostSlice(path string, body interface{}) ([]interface{}, error) {
 	return result, nil
 }
 
-// ── Email notification ──────────────────────────────────
+// ── Email notification ─────────────────────────────────
 
 func sendAlertEmail(alert map[string]interface{}) {
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
+	smtpUser   := os.Getenv("SMTP_USER")
+	smtpPass   := os.Getenv("SMTP_PASS")
 	alertEmail := os.Getenv("ALERT_EMAIL")
 
 	if smtpUser == "" || smtpPass == "" || alertEmail == "" {
-		log.Printf("[alert] Email env vars not set — skipping email for %v", alert["ticker"])
+		log.Printf("[alert] Email env vars not set — skipping for %v", alert["ticker"])
 		return
 	}
 
-	ticker := fmt.Sprintf("%v", alert["ticker"])
+	ticker         := fmt.Sprintf("%v", alert["ticker"])
 	triggeredPrice := fmt.Sprintf("%v", alert["triggered_price"])
-	threshold := fmt.Sprintf("%v", alert["threshold"])
-	direction := fmt.Sprintf("%v", alert["direction"])
+	threshold      := fmt.Sprintf("%v", alert["threshold"])
+	direction      := fmt.Sprintf("%v", alert["direction"])
 
 	subject := fmt.Sprintf("Quantiq Alert: %s hit your price target", ticker)
-	body := fmt.Sprintf(
+	body    := fmt.Sprintf(
 		"Your Quantiq alert has triggered!\n\n"+
-			"Ticker:           %s\n"+
-			"Direction:        %s $%s\n"+
-			"Triggered at:     $%s\n\n"+
+			"Ticker:       %s\n"+
+			"Direction:    %s $%s\n"+
+			"Triggered at: $%s\n\n"+
 			"Log in to Quantiq to review your portfolio.",
 		ticker, direction, threshold, triggeredPrice,
 	)
 
-	msg := fmt.Sprintf("Subject: %s\r\n\r\n%s", subject, body)
-
+	msg  := fmt.Sprintf("Subject: %s\r\n\r\n%s", subject, body)
 	auth := smtp.PlainAuth("", smtpUser, smtpPass, "smtp.gmail.com")
-	err := smtp.SendMail(
-		"smtp.gmail.com:587",
-		auth,
-		smtpUser,
-		[]string{alertEmail},
-		[]byte(msg),
-	)
-	if err != nil {
+
+	if err := smtp.SendMail("smtp.gmail.com:587", auth, smtpUser,
+		[]string{alertEmail}, []byte(msg)); err != nil {
 		log.Printf("[alert] Failed to send email for %s: %v", ticker, err)
 	} else {
 		log.Printf("[alert] Email sent for %s trigger", ticker)
 	}
 }
 
-// ── Background alert poller ─────────────────────────────
+// ── Background alert poller ────────────────────────────
 
 func startAlertPoller() {
 	go func() {
@@ -259,7 +260,7 @@ func startAlertPoller() {
 					"session_id": sid,
 				})
 				if err != nil {
-					log.Printf("[alert poller] check_alerts error for session %s: %v", sid, err)
+					log.Printf("[alert poller] error for session %s: %v", sid, err)
 					continue
 				}
 
@@ -273,7 +274,7 @@ func startAlertPoller() {
 					if !ok {
 						continue
 					}
-					log.Printf("[alert poller] Alert triggered: %v @ $%v",
+					log.Printf("[alert poller] Triggered: %v @ $%v",
 						alert["ticker"], alert["triggered_price"])
 					sendAlertEmail(alert)
 				}
@@ -282,7 +283,7 @@ func startAlertPoller() {
 	}()
 }
 
-// ── Main ────────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────
 
 func main() {
 	InitDB()
@@ -316,7 +317,7 @@ func main() {
 			req.TimeRange = "7d"
 		}
 		trackSession(req.SessionID)
-		start := time.Now()
+		start   := time.Now()
 		context := buildContext(req.Question, req.TimeRange)
 		answer, sessionID := generateResponse(req.Question, context, req.SessionID)
 		trackSession(sessionID)
@@ -340,9 +341,9 @@ func main() {
 
 	// ── Sentiment ──────────────────────────────────────
 	r.GET("/sentiment/:ticker", func(c *gin.Context) {
-		ticker := strings.ToUpper(c.Param("ticker"))
+		ticker  := strings.ToUpper(c.Param("ticker"))
 		company := c.DefaultQuery("company", "")
-		path := "/sentiment/" + ticker
+		path    := "/sentiment/" + ticker
 		if company != "" {
 			path += "?company=" + company
 		}
@@ -466,6 +467,73 @@ func main() {
 		c.JSON(http.StatusOK, result)
 	})
 
+	// ── Forex ──────────────────────────────────────────
+	r.GET("/forex/pairs", func(c *gin.Context) {
+		resp, err := httpClient.Get(pythonURL() + "/forex/pairs")
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Forex service unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+		var result interface{}
+		json.NewDecoder(resp.Body).Decode(&result)
+		c.JSON(http.StatusOK, result)
+	})
+
+	r.POST("/forex", func(c *gin.Context) {
+		var req struct {
+			Pair      string `json:"pair" binding:"required"`
+			SessionID string `json:"session_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		result, err := proxyPost("/forex", req)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Forex service unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	r.POST("/forex/from-chat", func(c *gin.Context) {
+		var req struct {
+			Query     string `json:"query" binding:"required"`
+			SessionID string `json:"session_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		result, err := proxyPost("/forex/from-chat", req)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Forex service unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	// ── Explain (beginner mode) ────────────────────────
+	r.POST("/explain", func(c *gin.Context) {
+		var req struct {
+			Term      string `json:"term" binding:"required"`
+			Stock     string `json:"stock"`
+			Context   string `json:"context"`
+			SessionID string `json:"session_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		result, err := proxyPost("/explain", req)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Explain service unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
 	// ── Alerts ─────────────────────────────────────────
 	r.POST("/create_alert", func(c *gin.Context) {
 		var body map[string]interface{}
@@ -526,24 +594,21 @@ func main() {
 		c.JSON(http.StatusOK, result)
 	})
 
-	// ── Start poller & server ──────────────────────────
-	startAlertPoller()
-
-
-
-
-	// ── Auth (public) ─────────────────────────────────
+	// ── Auth (public) ──────────────────────────────────
 	r.POST("/register", handleRegister)
-	r.POST("/login", handleLogin)
+	r.POST("/login",    handleLogin)
 
-	// ── Protected routes ──────────────────────────────
+	// ── Protected routes ───────────────────────────────
 	authGroup := r.Group("/")
 	authGroup.Use(AuthMiddleware())
 	{
-		authGroup.GET("/watchlist", handleGetWatchlist)
-		authGroup.POST("/watchlist", handleAddWatchlist)
-		authGroup.DELETE("/watchlist/:ticker", handleDeleteWatchlist)
+		authGroup.GET("/watchlist",              handleGetWatchlist)
+		authGroup.POST("/watchlist",             handleAddWatchlist)
+		authGroup.DELETE("/watchlist/:ticker",   handleDeleteWatchlist)
 	}
+
+	// ── Start poller + server ──────────────────────────
+	startAlertPoller()
 
 	port := os.Getenv("PORT")
 	if port == "" {
