@@ -27,10 +27,10 @@ RUN addgroup --system quantiq && adduser --system --ingroup quantiq quantiq
 # Copy only the source code needed to run (not model weights, not .git, not tests)
 # Make sure your .dockerignore excludes: .git, __pycache__, *.pyc, model/weights/,
 # node_modules, frontend/, k8s/, *.md
-COPY main.py      ./main.py
-COPY auth.py      ./auth.py
+COPY backend/     ./backend/
 COPY rag/         ./rag/
 COPY model/       ./model/
+
 
 # Own the workdir
 RUN chown -R quantiq:quantiq /app
