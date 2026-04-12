@@ -7,12 +7,12 @@ import {
 const API_URL = "https://quantiq-go.onrender.com";
 
 // ── Auth helpers ────────────────────────────────────────
-const getToken = () => localStorage.getItem("quantiq_token");
-const setToken = (t) => localStorage.setItem("quantiq_token", t);
-const removeToken = () => localStorage.removeItem("quantiq_token");
-const getUser = () => { try { return JSON.parse(localStorage.getItem("quantiq_user")); } catch { return null; } };
-const setUser = (u) => localStorage.setItem("quantiq_user", JSON.stringify(u));
-const removeUser = () => localStorage.removeItem("quantiq_user");
+const getToken = () => localStorage.getItem("fintrest_token");
+const setToken = (t) => localStorage.setItem("fintrest_token", t);
+const removeToken = () => localStorage.removeItem("fintrest_token");
+const getUser = () => { try { return JSON.parse(localStorage.getItem("fintrest_user")); } catch { return null; } };
+const setUser = (u) => localStorage.setItem("fintrest_user", JSON.stringify(u));
+const removeUser = () => localStorage.removeItem("fintrest_user");
 
 // ── Chart data ──────────────────────────────────────────
 const generateChartData = (base, points = 30) => {
@@ -45,13 +45,6 @@ const TYPE_STYLES = {
   Crypto: { bg: "#1a1a2e", color: "#a78bfa" },
   India:  { bg: "#1a2e1a", color: "#3fb950" },
   US:     { bg: "#1a1e2e", color: "#60a5fa" },
-};
-
-// ── Breakpoints ─────────────────────────────────────────
-const getBreakpoint = (w) => {
-  if (w < 768) return "mobile";
-  if (w < 1100) return "tablet";
-  return "desktop";
 };
 
 // ── Sentiment helpers ───────────────────────────────────
@@ -145,9 +138,9 @@ function SentimentGauge({ ticker, sentiment, loading }) {
 }
 
 // ── Session helpers ─────────────────────────────────────
-const getSessionId = () => localStorage.getItem("quantiq_session_id");
-const setSessionId = (id) => localStorage.setItem("quantiq_session_id", id);
-const removeSessionId = () => localStorage.removeItem("quantiq_session_id");
+const getSessionId = () => localStorage.getItem("fintrest_session_id");
+const setSessionId = (id) => localStorage.setItem("fintrest_session_id", id);
+const removeSessionId = () => localStorage.removeItem("fintrest_session_id");
 const startSession = async () => {
   try {
     const res = await fetch(`${API_URL}/session/new`, { method: "POST" });
@@ -234,10 +227,16 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
           <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change)}%</div>
         </div>
       </div>
-      <div style={{ marginTop: 12, height: 50 }}>
-        <ResponsiveContainer width="100%" height="100%">
+      {/* FIX: explicit width + pixel height on container, pixel height on ResponsiveContainer */}
+      <div style={{ marginTop: 12, height: 50, width: "100%" }}>
+        <ResponsiveContainer width="100%" height={50}>
           <AreaChart data={data}>
-            <defs><linearGradient id={`g-${stock.ticker}`} x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.3} /><stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} /></linearGradient></defs>
+            <defs>
+              <linearGradient id={`g-${stock.ticker}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} />
+              </linearGradient>
+            </defs>
             <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={1.5} fill={`url(#g-${stock.ticker})`} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
@@ -267,16 +266,24 @@ function MainChart({ stock }) {
           <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change)}% today</div>
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={160}>
-        <AreaChart data={data}>
-          <defs><linearGradient id="mainGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.25} /><stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} /></linearGradient></defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-          <XAxis dataKey="day" tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} interval={9} />
-          <YAxis tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `$${v.toLocaleString()}`} />
-          <Tooltip content={<CustomTooltip />} />
-          <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={2} fill="url(#mainGrad)" dot={false} />
-        </AreaChart>
-      </ResponsiveContainer>
+      {/* FIX: wrap in a sized div so ResponsiveContainer always has a measured parent */}
+      <div style={{ width: "100%", height: 160 }}>
+        <ResponsiveContainer width="100%" height={160}>
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id="mainGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.25} />
+                <stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+            <XAxis dataKey="day" tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} interval={9} />
+            <YAxis tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `$${v.toLocaleString()}`} />
+            <Tooltip content={<CustomTooltip />} />
+            <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={2} fill="url(#mainGrad)" dot={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -349,57 +356,18 @@ function AuthModal({ onSuccess }) {
   );
 }
 
-// ── Tablet Chat Drawer ──────────────────────────────────
-function TabletChatDrawer({ open, onClose, children }) {
-  return (
-    <>
-      {open && (
-        <div
-          onClick={onClose}
-          style={{ position: "fixed", inset: 0, background: "rgba(1,4,9,0.6)", zIndex: 200, backdropFilter: "blur(2px)" }}
-        />
-      )}
-      <div style={{
-        position: "fixed", top: 0, right: 0, bottom: 0,
-        width: "min(400px, 92vw)",
-        background: "#0d1117",
-        borderLeft: "1px solid #21262d",
-        zIndex: 201,
-        display: "flex",
-        flexDirection: "column",
-        transform: open ? "translateX(0)" : "translateX(100%)",
-        transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
-      }}>
-        <div style={{ padding: "14px 20px", borderBottom: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#e6edf3" }}>Quantiq Advisor</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "0 4px" }}>×</button>
-        </div>
-        {children}
-      </div>
-    </>
-  );
-}
-
 // ── Main App ────────────────────────────────────────────
 export default function App() {
   // ── Responsive ────────────────────────────────────────
-  const [bp, setBp] = useState(() => getBreakpoint(window.innerWidth));
-  const isMobile = bp === "mobile";
-  const isTablet = bp === "tablet";
-  const isDesktop = bp === "desktop";
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [mobileTab, setMobileTab] = useState("market");
+  const [activeTab, setActiveTab] = useState("watchlist");
 
   useEffect(() => {
-    const onResize = () => setBp(getBreakpoint(window.innerWidth));
+    const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-
-  // ── Mobile bottom nav: "market" | "chat" | "watchlist" | "more"
-  const [mobileTab, setMobileTab] = useState("market");
-  // ── Desktop/Tablet left panel tab
-  const [activeTab, setActiveTab] = useState("watchlist");
-  // ── Tablet chat drawer
-  const [tabletChatOpen, setTabletChatOpen] = useState(false);
 
   // ── Auth ───────────────────────────────────────────────
   const [userState, setUserState] = useState(getUser());
@@ -503,7 +471,7 @@ export default function App() {
   };
 
   const dismissNotif = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
-  const addToPortfolio = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
+  const addToPortfolio = (t) => { const v = t.trim(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
   const removeFromPortfolio = (t) => setPortfolio(prev => prev.filter(x => x !== t));
 
   const runPortfolioAnalysis = async (over = null) => {
@@ -530,7 +498,7 @@ export default function App() {
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
       setCompareData(data);
-      if (isMobile) setMobileTab("market");
+      if (isMobile) setMobileTab("market"); else setActiveTab("compare");
       fetchSentiment(ta); fetchSentiment(tb);
     } catch { setCompareData({ error: "Comparison failed." }); }
     setCompareLoading(false);
@@ -545,7 +513,6 @@ export default function App() {
     setMessages(prev => [...prev, { role: "user", content: question }]);
     setInput("");
     if (isMobile) setMobileTab("chat");
-    if (isTablet) setTabletChatOpen(true);
 
     if (isCompare) {
       try {
@@ -595,10 +562,7 @@ export default function App() {
   const activeAlerts    = alerts.filter(a => !a.triggered);
   const triggeredAlerts = alerts.filter(a => a.triggered);
 
-  // ── Header height ref for dvh calc ────────────────────
-  const HEADER_H = isMobile ? 57 : 65;
-
-  // ── Tab styles ─────────────────────────────────────────
+  // ── Left panel tab content ─────────────────────────────
   const tabStyle = (tab) => ({
     flex: 1, padding: "7px 0", fontSize: 10, fontWeight: 600,
     letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer",
@@ -609,7 +573,6 @@ export default function App() {
     transition: "all 0.15s",
   });
 
-  // ── Left panel content ─────────────────────────────────
   const renderLeftPanelContent = () => (
     <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
       {activeTab === "watchlist" && (
@@ -778,12 +741,12 @@ export default function App() {
     </div>
   );
 
-  // ── Center content ─────────────────────────────────────
+  // ── Center panel content ───────────────────────────────
   const renderCenterContent = () => (
     <div style={{ padding: isMobile ? 16 : 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
       {compareData && !compareData.error && compareData.ticker_a ? (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 15 : 18, color: "#f7c843", fontWeight: 700 }}>{compareData.ticker_a}</span>
             <span style={{ fontSize: 12, color: "#8b949e" }}>vs</span>
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 15 : 18, color: "#f7c843", fontWeight: 700 }}>{compareData.ticker_b}</span>
@@ -808,7 +771,7 @@ export default function App() {
       ) : (
         <>
           <MainChart stock={selectedStock} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
             {[{ label: "Market Cap", value: "$3.76T" }, { label: "P/E Ratio", value: "32.35" }, { label: "EPS", value: "$7.91" }, { label: "Div Yield", value: "0.41%" }].map((stat, i) => (
               <div key={i} style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 12, padding: "12px 14px", textAlign: "center" }}>
                 <div style={{ fontSize: 10, color: "#8b949e", marginBottom: 4 }}>{stat.label}</div>
@@ -819,14 +782,12 @@ export default function App() {
           <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
         </>
       )}
-      {/* Quick Ask — desktop + tablet */}
       {!isMobile && (
         <div>
           <div style={{ fontSize: 11, color: "#8b949e", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Quick Ask</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {SUGGESTIONS.map((s, i) => (
-              <button key={i} onClick={() => sendMessage(s)}
-                style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: "7px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer", transition: "all 0.15s" }}
+              <button key={i} onClick={() => sendMessage(s)} style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: "7px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer", transition: "all 0.15s" }}
                 onMouseEnter={e => { e.target.style.borderColor = "#f7c843"; e.target.style.color = "#f7c843"; }}
                 onMouseLeave={e => { e.target.style.borderColor = "#21262d"; e.target.style.color = "#8b949e"; }}>
                 {s}
@@ -841,8 +802,7 @@ export default function App() {
   // ── Chat panel content ─────────────────────────────────
   const renderChatContent = () => (
     <>
-      {/* Header only on desktop — tablet has its own drawer header */}
-      {isDesktop && (
+      {!isMobile && (
         <div style={{ padding: "12px 20px", borderBottom: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: "#e6edf3" }}>Quantiq Advisor</span>
           <select value={timeRange} onChange={e => setTimeRange(e.target.value)}
@@ -852,9 +812,8 @@ export default function App() {
         </div>
       )}
       <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 16px 0" : "20px" }}>
-        {/* Quick ask pills on mobile — with fade mask */}
         {isMobile && (
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 8, WebkitMaskImage: "linear-gradient(to right, black 85%, transparent 100%)", maskImage: "linear-gradient(to right, black 85%, transparent 100%)" }}>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 8 }}>
             {SUGGESTIONS.map((s, i) => (
               <button key={i} onClick={() => sendMessage(s)}
                 style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 12px", fontSize: 11, color: "#8b949e", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
@@ -883,7 +842,7 @@ export default function App() {
     </>
   );
 
-  // ── Mobile bottom nav items ────────────────────────────
+  // ── Mobile bottom nav ──────────────────────────────────
   const mobileNavItems = [
     { id: "market",    icon: "📈", label: "Market"    },
     { id: "chat",      icon: "💬", label: "Chat"      },
@@ -894,7 +853,7 @@ export default function App() {
   return (
     <>
       {showAuth && <AuthModal onSuccess={handleAuthSuccess} />}
-      <div style={{ minHeight: "100dvh", background: "#010409", fontFamily: "'DM Sans', sans-serif", color: "#e6edf3", display: "flex", flexDirection: "column" }}>
+      <div style={{ minHeight: "100vh", background: "#010409", fontFamily: "'DM Sans', sans-serif", color: "#e6edf3", display: "flex", flexDirection: "column" }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500;700&display=swap');
           * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -924,8 +883,8 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Header ── */}
-        <header style={{ borderBottom: "1px solid #21262d", padding: isMobile ? "12px 16px" : "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0d1117", flexShrink: 0 }}>
+        {/* Header */}
+        <header style={{ borderBottom: "1px solid #21262d", padding: isMobile ? "12px 16px" : "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0d1117" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 32, height: 32, background: "#f7c843", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💹</div>
             <div>
@@ -937,24 +896,19 @@ export default function App() {
             <div style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "5px 12px", fontSize: 11, color: "#3fb950", display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#3fb950" }} />Live
             </div>
-            {/* Tablet: Chat button in header */}
-            {isTablet && (
-              <button onClick={() => setTabletChatOpen(true)}
-                style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#f7c843", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>
-                💬 Chat
-              </button>
-            )}
             {!isMobile && (
-              <button onClick={handleNewChat} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}
-                onMouseEnter={e => { e.target.style.borderColor = "#f7c843"; e.target.style.color = "#f7c843"; }}
-                onMouseLeave={e => { e.target.style.borderColor = "#21262d"; e.target.style.color = "#8b949e"; }}>
-                + New chat
-              </button>
-            )}
-            {userState && !isMobile && (
-              <button onClick={handleLogout} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#f85149", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                Sign out
-              </button>
+              <>
+                <button onClick={handleNewChat} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}
+                  onMouseEnter={e => { e.target.style.borderColor = "#f7c843"; e.target.style.color = "#f7c843"; }}
+                  onMouseLeave={e => { e.target.style.borderColor = "#21262d"; e.target.style.color = "#8b949e"; }}>
+                  + New chat
+                </button>
+                {userState && (
+                  <button onClick={handleLogout} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#f85149", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                    Sign out
+                  </button>
+                )}
+              </>
             )}
             {isMobile && userState && (
               <button onClick={handleLogout} style={{ background: "none", border: "none", color: "#f85149", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Out</button>
@@ -963,11 +917,11 @@ export default function App() {
         </header>
 
         {/* ── DESKTOP LAYOUT ── */}
-        {isDesktop && (
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "300px minmax(0, 1fr) minmax(320px, 380px)", overflow: "hidden", height: `calc(100dvh - ${HEADER_H}px)` }}>
+        {!isMobile ? (
+          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "300px 1fr 380px", overflow: "hidden", height: "calc(100vh - 65px)" }}>
             {/* Left panel */}
-            <div style={{ borderRight: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117", overflow: "hidden" }}>
-              <div style={{ display: "flex", borderBottom: "1px solid #21262d", flexShrink: 0 }}>
+            <div style={{ borderRight: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117" }}>
+              <div style={{ display: "flex", borderBottom: "1px solid #21262d" }}>
                 <button style={tabStyle("watchlist")} onClick={() => setActiveTab("watchlist")}>Watch</button>
                 <button style={tabStyle("compare")}   onClick={() => setActiveTab("compare")}>Compare</button>
                 <button style={tabStyle("portfolio")} onClick={() => setActiveTab("portfolio")}>Portfolio</button>
@@ -981,54 +935,24 @@ export default function App() {
             {/* Center */}
             <div style={{ overflowY: "auto" }}>{renderCenterContent()}</div>
             {/* Right / Chat */}
-            <div style={{ borderLeft: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117", overflow: "hidden" }}>
+            <div style={{ borderLeft: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117" }}>
               {renderChatContent()}
             </div>
           </div>
-        )}
-
-        {/* ── TABLET LAYOUT ── */}
-        {isTablet && (
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(220px, 260px) minmax(0, 1fr)", overflow: "hidden", height: `calc(100dvh - ${HEADER_H}px)` }}>
-            {/* Left panel */}
-            <div style={{ borderRight: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117", overflow: "hidden" }}>
-              <div style={{ display: "flex", borderBottom: "1px solid #21262d", flexShrink: 0 }}>
-                <button style={tabStyle("watchlist")} onClick={() => setActiveTab("watchlist")}>Watch</button>
-                <button style={tabStyle("compare")}   onClick={() => setActiveTab("compare")}>⇄</button>
-                <button style={tabStyle("portfolio")} onClick={() => setActiveTab("portfolio")}>Port</button>
-                <button style={{ ...tabStyle("alerts"), position: "relative" }} onClick={() => { setActiveTab("alerts"); fetchAlerts(); }}>
-                  🔔
-                  {activeAlerts.length > 0 && <span style={{ position: "absolute", top: 4, right: 4, background: "#f7c843", color: "#0d1117", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{activeAlerts.length}</span>}
-                </button>
-              </div>
-              {renderLeftPanelContent()}
-            </div>
-            {/* Center only — chat is a drawer */}
-            <div style={{ overflowY: "auto" }}>{renderCenterContent()}</div>
-            {/* Chat drawer */}
-            <TabletChatDrawer open={tabletChatOpen} onClose={() => setTabletChatOpen(false)}>
-              {renderChatContent()}
-            </TabletChatDrawer>
-          </div>
-        )}
-
-        {/* ── MOBILE LAYOUT ── */}
-        {isMobile && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", height: `calc(100dvh - ${HEADER_H}px)` }}>
+        ) : (
+          /* ── MOBILE LAYOUT ── */
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", height: "calc(100vh - 57px)" }}>
             <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-
               {mobileTab === "market" && (
                 <div style={{ flex: 1, overflowY: "auto" }}>
                   {renderCenterContent()}
                 </div>
               )}
-
               {mobileTab === "chat" && (
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                   {renderChatContent()}
                 </div>
               )}
-
               {mobileTab === "watchlist" && (
                 <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1043,10 +967,9 @@ export default function App() {
                   </div>
                 </div>
               )}
-
               {mobileTab === "more" && (
-                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-                  <div style={{ display: "flex", borderBottom: "1px solid #21262d", background: "#0d1117", flexShrink: 0 }}>
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  <div style={{ display: "flex", borderBottom: "1px solid #21262d", background: "#0d1117" }}>
                     {["compare", "portfolio", "alerts"].map(t => (
                       <button key={t} onClick={() => setActiveTab(t)}
                         style={{ flex: 1, padding: "10px 0", fontSize: 11, fontWeight: 600, textTransform: "capitalize", border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", background: activeTab === t ? "#161b22" : "transparent", color: activeTab === t ? "#f7c843" : "#8b949e", borderBottom: activeTab === t ? "2px solid #f7c843" : "2px solid transparent" }}>
@@ -1060,19 +983,14 @@ export default function App() {
             </div>
 
             {/* Mobile bottom navigation */}
-            <div style={{ borderTop: "1px solid #21262d", background: "#0d1117", display: "flex", flexShrink: 0, paddingBottom: "env(safe-area-inset-bottom)" }}>
+            <div style={{ borderTop: "1px solid #21262d", background: "#0d1117", display: "flex", paddingBottom: "env(safe-area-inset-bottom)" }}>
               {mobileNavItems.map(item => (
-                <button key={item.id}
-                  onClick={() => {
-                    setMobileTab(item.id);
-                    if (item.id === "more" && !["compare","portfolio","alerts"].includes(activeTab)) setActiveTab("compare");
-                    if (item.id === "more") fetchAlerts();
-                  }}
-                  style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "10px 0 8px", border: "none", background: "transparent", cursor: "pointer", position: "relative" }}>
+                <button key={item.id} onClick={() => { setMobileTab(item.id); if (item.id === "more" && !["compare","portfolio","alerts"].includes(activeTab)) setActiveTab("compare"); if (item.id === "more") fetchAlerts(); }}
+                  style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "10px 0 8px", border: "none", background: "transparent", cursor: "pointer", transition: "all 0.15s" }}>
                   <span style={{ fontSize: 20 }}>{item.icon}</span>
                   <span style={{ fontSize: 10, fontWeight: 600, color: mobileTab === item.id ? "#f7c843" : "#8b949e", fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
                   {item.id === "more" && activeAlerts.length > 0 && (
-                    <span style={{ position: "absolute", top: 6, right: "calc(50% - 18px)", width: 8, height: 8, background: "#f7c843", borderRadius: "50%" }} />
+                    <span style={{ position: "absolute", width: 8, height: 8, background: "#f7c843", borderRadius: "50%", marginTop: -2 }} />
                   )}
                 </button>
               ))}

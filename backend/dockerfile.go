@@ -1,0 +1,44 @@
+# quantiq/backend/Dockerfile.go  ← NEW FILE, place in your backend/ folder
+#
+# Go multi-stage build — final image is ~10MB (vs 1GB+ for Python)
+# The Go binary is statically compiled so no runtime deps needed at all
+
+# ── Stage 1: build the binary ─────────────────────────────────────────────
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /build
+
+# Install git (needed for go mod download with private repos)
+RUN apk add --no-cache git
+
+# Download deps first — cached unless go.mod/go.sum change
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source and build a statically linked binary
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-w -s" -o trading-engine ./trading/main.go
+
+# -w -s strips debug info → ~30% smaller binary
+# CGO_ENABLED=0 → no C deps → works in scratch/alpine
+
+# ── Stage 2: minimal runtime — just the binary ────────────────────────────
+FROM alpine:3.19 AS runtime
+
+# ca-certificates needed for HTTPS calls to Kite API, yfinance sidecar etc.
+RUN apk add --no-cache ca-certificates tzdata && \
+    addgroup -S quantiq && adduser -S quantiq -G quantiq
+
+WORKDIR /app
+COPY --from=builder /build/trading-engine ./trading-engine
+
+RUN chown quantiq:quantiq ./trading-engine
+USER quantiq
+
+EXPOSE 8081
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:8081/health || exit 1
+
+CMD ["./trading-engine"]
