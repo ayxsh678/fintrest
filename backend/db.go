@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -25,6 +26,10 @@ func InitDB() {
 	if err = DB.Ping(); err != nil {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
+
+	DB.SetMaxOpenConns(25)
+	DB.SetMaxIdleConns(5)
+	DB.SetConnMaxLifetime(5 * time.Minute)
 
 	createTables()
 	log.Println("✅ Database connected")

@@ -1,6 +1,9 @@
 import uuid
+import logging
 import yfinance as yf
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 # In-memory store: { session_id: [ {id, ticker, threshold, direction, created_at, triggered} ] }
 _alerts: dict[str, list] = {}
@@ -46,6 +49,7 @@ def check_alerts(session_id: str) -> list:
                 alert["triggered_price"] = round(price, 2)
                 alert["triggered_at"] = datetime.utcnow().isoformat()
                 triggered.append(alert)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to check price for alert %s (%s): %s",
+                           alert["id"], alert["ticker"], e)
     return triggered

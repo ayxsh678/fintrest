@@ -22,7 +22,7 @@ class SentimentBacktester:
     def run_backtest(self, ticker: str) -> Dict:
         """Safe sentiment-based backtest"""
         try:
-            print(f"Fetching historical data for {ticker}...")
+            logger.info("Fetching historical data for %s...", ticker)
 
             end = datetime.now()
             start = end - timedelta(days=400)
@@ -40,7 +40,7 @@ class SentimentBacktester:
             entry_price = 0.0
             entry_date = None
 
-            print(f"Running backtest with {len(close_prices)} trading days...")
+            logger.info("Running backtest with %d trading days...", len(close_prices))
 
             for i in range(20, len(close_prices)):
                 current_date = close_prices.index[i].date()
@@ -99,7 +99,7 @@ class SentimentBacktester:
                 "message": f"Backtest completed for {ticker}"
             }
 
-            print(f"✅ Backtest finished! Strategy Return: {total_return:.2f}% | Buy & Hold: {buy_hold_return:.2f}%")
+            logger.info("Backtest finished — Strategy Return: %.2f%% | Buy & Hold: %.2f%%", total_return, buy_hold_return)
             return result
 
         except Exception as e:

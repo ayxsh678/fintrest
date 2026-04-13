@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -135,7 +136,7 @@ func generateResponse(question, context, sessionID string) (string, string) {
 }
 
 func getStockData(ticker string) interface{} {
-	resp, err := httpClient.Get(pythonURL() + "/stock/" + ticker)
+	resp, err := httpClient.Get(pythonURL() + "/stock/" + url.PathEscape(ticker))
 	if err != nil {
 		log.Printf("[getStockData] error for %s: %v", ticker, err)
 		return gin.H{"error": "Stock service unavailable"}
@@ -229,10 +230,18 @@ func sendAlertEmail(alert map[string]interface{}) {
 	smtpUser   := os.Getenv("SMTP_USER")
 	smtpPass   := os.Getenv("SMTP_PASS")
 	alertEmail := os.Getenv("ALERT_EMAIL")
+	smtpHost   := os.Getenv("SMTP_HOST")
+	smtpPort   := os.Getenv("SMTP_PORT")
 
 	if smtpUser == "" || smtpPass == "" || alertEmail == "" {
 		log.Printf("[alert] Email env vars not set — skipping for %v", alert["ticker"])
 		return
+	}
+	if smtpHost == "" {
+		smtpHost = "smtp.gmail.com"
+	}
+	if smtpPort == "" {
+		smtpPort = "587"
 	}
 
 	ticker         := fmt.Sprintf("%v", alert["ticker"])
@@ -251,9 +260,9 @@ func sendAlertEmail(alert map[string]interface{}) {
 	)
 
 	msg  := fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", alertEmail, subject, body)
-	auth := smtp.PlainAuth("", smtpUser, smtpPass, "smtp.gmail.com")
+	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 
-	if err := smtp.SendMail("smtp.gmail.com:587", auth, smtpUser,
+	if err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser,
 		[]string{alertEmail}, []byte(msg)); err != nil {
 		log.Printf("[alert] Failed to send email for %s: %v", ticker, err)
 	} else {
@@ -380,9 +389,9 @@ func main() {
 	r.GET("/sentiment/:ticker", func(c *gin.Context) {
 		ticker  := strings.ToUpper(c.Param("ticker"))
 		company := c.DefaultQuery("company", "")
-		path    := "/sentiment/" + ticker
+		path    := "/sentiment/" + url.PathEscape(ticker)
 		if company != "" {
-			path += "?company=" + company
+			path += "?company=" + url.QueryEscape(company)
 		}
 		resp, err := httpClient.Get(pythonURL() + path)
 		if err != nil {
@@ -414,7 +423,7 @@ func main() {
 	r.DELETE("/session/:id", func(c *gin.Context) {
 		req, err := http.NewRequest(
 			http.MethodDelete,
-			pythonURL()+"/session/"+c.Param("id"),
+			pythonURL()+"/session/"+url.PathEscape(c.Param("id")),
 			nil,
 		)
 		if err != nil {
@@ -428,7 +437,11 @@ func main() {
 		}
 		defer resp.Body.Close()
 		var result interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			log.Printf("[DELETE /session] decode error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode session response"})
+			return
+		}
 		c.JSON(http.StatusOK, result)
 	})
 
@@ -516,7 +529,11 @@ func main() {
 		}
 		defer resp.Body.Close()
 		var result interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			log.Printf("[forex/pairs] decode error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode forex pairs"})
+			return
+		}
 		c.JSON(http.StatusOK, result)
 	})
 
