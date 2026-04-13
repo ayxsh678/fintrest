@@ -161,46 +161,67 @@ function TradingViewChart({ ticker, height = 220 }) {
   const ref = useRef(null);
 
   const tvSymbol = (t) => {
-    const map = { 
-      BTC: "BINANCE:BTCUSDT", 
-      ETH: "BINANCE:ETHUSDT", 
-      SOL: "BINANCE:SOLUSDT", 
-      BNB: "BINANCE:BNBUSDT", 
-      DOGE: "BINANCE:DOGEUSDT" 
+    const map = {
+      BTC:  "BINANCE:BTCUSDT",
+      ETH:  "BINANCE:ETHUSDT",
+      SOL:  "BINANCE:SOLUSDT",
+      BNB:  "BINANCE:BNBUSDT",
+      DOGE: "BINANCE:DOGEUSDT",
     };
     if (map[t]) return map[t];
     if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
     if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
-    // Default US stocks
     return t.includes(":") ? t : `NASDAQ:${t}`;
   };
 
   useEffect(() => {
     if (!ref.current) return;
-    ref.current.innerHTML = "";
+
+    // Force full DOM wipe including any lingering iframes
+    while (ref.current.firstChild) {
+      ref.current.removeChild(ref.current.firstChild);
+    }
+
+    const container = document.createElement("div");
+    container.className = "tradingview-widget-container__widget";
+    container.style.height = "100%";
+    container.style.width  = "100%";
+    ref.current.appendChild(container);
+
     const s = document.createElement("script");
-    s.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    s.type = "text/javascript"; 
+    s.src   = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    s.type  = "text/javascript";
     s.async = true;
-    s.innerHTML = JSON.stringify({ 
-      autosize: true, 
-      symbol: tvSymbol(ticker), 
-      interval: "D", 
-      timezone: "Etc/UTC", 
-      theme: "dark", 
-      style: "1", 
-      locale: "en", 
+    s.innerHTML = JSON.stringify({
+      autosize:          true,
+      symbol:            tvSymbol(ticker),
+      interval:          "D",
+      timezone:          "Etc/UTC",
+      theme:             "dark",
+      style:             "1",
+      locale:            "en",
       enable_publishing: false,
-      allow_symbol_change: false, 
-      calendar: false, 
-      support_host: "https://www.tradingview.com", 
-      backgroundColor: "rgba(13,17,23,1)", 
-      gridColor: "rgba(33,38,45,1)" 
+      allow_symbol_change: false,
+      calendar:          false,
+      support_host:      "https://www.tradingview.com",
+      backgroundColor:   "rgba(13,17,23,1)",
+      gridColor:         "rgba(33,38,45,1)",
     });
     ref.current.appendChild(s);
+
+    // Cleanup on unmount or ticker change
+    return () => {
+      if (ref.current) ref.current.innerHTML = "";
+    };
   }, [ticker]);
 
-  return <div ref={ref} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }} />;
+  return (
+    <div
+      key={ticker}
+      ref={ref}
+      style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }}
+    />
+  );
 }
 
 // ── Compare Table ───────────────────────────────────────
