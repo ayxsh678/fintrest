@@ -1,6 +1,6 @@
-"homepage": "http://ayxsh678.github.io/quantiq",
+"homepage": "http://ayxsh678.github.io/quantiq-frontend",
 {
-  "name": "frontend",
+  "name": "quantiq-frontend",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
