@@ -152,7 +152,7 @@ def get_stock_data(ticker: str) -> str:
         prev_close = fi.previous_close  or "N/A"
         week_high  = fi.fifty_two_week_high or "N/A"
         week_low   = fi.fifty_two_week_low  or "N/A"
-        market_cap = fi.market_cap      or 0
+        market_cap = int(fi.market_cap or 0)
 
         # PE and EPS not in fast_info — attempt quietly, skip if rate limited
         try:

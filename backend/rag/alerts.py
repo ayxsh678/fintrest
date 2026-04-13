@@ -43,8 +43,9 @@ def check_alerts(session_id: str) -> list:
         if alert["triggered"]:
             continue
         try:
-            price = yf.Ticker(alert["ticker"]).fast_info["last_price"]
-            hit = (alert["direction"] == "above" and price >= alert["threshold"]) or \
+            price = yf.Ticker(alert["ticker"]).fast_info.last_price
+            if price is None:
+                continue            hit = (alert["direction"] == "above" and price >= alert["threshold"]) or \
                     (alert["direction"] == "below" and price <= alert["threshold"])
             if hit:
                 alert["triggered"] = True

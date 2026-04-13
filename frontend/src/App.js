@@ -212,8 +212,6 @@ function TradingViewChart({ ticker, height = 220 }) {
     };
   }, [ticker]);
 
-  // ✅ key on wrapper forces full React remount when ticker changes
-  // ✅ ref on inner div so React doesn't conflict with key
   return (
     <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }}>
       <div ref={ref} style={{ height: "100%", width: "100%" }} />
@@ -223,8 +221,10 @@ function TradingViewChart({ ticker, height = 220 }) {
 
 // ── Compare Table ───────────────────────────────────────
 function CompareTable({ data, ticker_a, ticker_b }) {
-  const parse = (s, f) => { const m = s?.match(new RegExp(`${f}: ([^\\n]+)`)); return m ? m[1].trim() : "—"; };
-  const sA = data?.data_a?.stock || "", sB = data?.data_b?.stock || "";
+  // FIX: regex now handles optional whitespace and $ sign; type guard on .stock
+  const parse = (s, f) => { const m = s?.match(new RegExp(`${f}:\\s*\\$?([^\\n]+)`)); return m ? m[1].trim() : "—"; };
+  const sA = typeof data?.data_a?.stock === "string" ? data.data_a.stock : "";
+  const sB = typeof data?.data_b?.stock === "string" ? data.data_b.stock : "";
   const rows = [
     { label: "Price",     a: parse(sA, "Current Price"),   b: parse(sB, "Current Price")   },
     { label: "5D Change", a: parse(sA, "5-Day Change"),    b: parse(sB, "5-Day Change")    },
@@ -367,11 +367,11 @@ function ChatBubble({ msg }) {
 
 // ── Auth Modal ──────────────────────────────────────────
 function AuthModal({ onSuccess }) {
-  const [mode, setMode]       = useState("login");
-  const [email, setEmail]     = useState("");
+  const [mode, setMode]         = useState("login");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError]     = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
 
   const submit = async () => {
     if (!email || !password) return;
@@ -419,7 +419,7 @@ function AuthModal({ onSuccess }) {
 
 // ── Main App ────────────────────────────────────────────
 export default function App() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isMobile, setIsMobile]   = useState(window.innerWidth < 768);
   const [mobileTab, setMobileTab] = useState("market");
   const [activeTab, setActiveTab] = useState("watchlist");
 
@@ -461,7 +461,10 @@ export default function App() {
   const [sentiments, setSentiments]             = useState({});
   const [sentimentLoading, setSentimentLoading] = useState({});
 
-  const bottomRef = useRef(null);
+  const bottomRef         = useRef(null);
+  // FIX: use a ref set to track fetched tickers — avoids stale closure
+  // and the infinite re-fetch loop caused by [sentiments] in useCallback deps
+  const fetchedTickersRef = useRef(new Set());
 
   useEffect(() => { if (!getSessionId()) startSession(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -495,15 +498,18 @@ export default function App() {
   }, []);
 
   const fetchSentiment = useCallback(async (ticker, name = "") => {
-    if (sentiments[ticker] !== undefined) return;
+    if (fetchedTickersRef.current.has(ticker)) return;
+    fetchedTickersRef.current.add(ticker);
     setSentimentLoading(prev => ({ ...prev, [ticker]: true }));
     try {
       const res  = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
       const data = await res.json();
       setSentiments(prev => ({ ...prev, [ticker]: data }));
-    } catch { setSentiments(prev => ({ ...prev, [ticker]: null })); }
+    } catch {
+      setSentiments(prev => ({ ...prev, [ticker]: null }));
+    }
     setSentimentLoading(prev => ({ ...prev, [ticker]: false }));
-  }, [sentiments]);
+  }, []);
 
   useEffect(() => { watchlist.forEach(s => fetchSentiment(s.ticker, s.name)); }, [watchlist, fetchSentiment]);
   useEffect(() => { fetchSentiment(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker, fetchSentiment]);
@@ -553,8 +559,8 @@ export default function App() {
     } catch {}
   };
 
-  const dismissNotif       = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
-  const addToPortfolio     = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
+  const dismissNotif        = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
+  const addToPortfolio      = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
   const removeFromPortfolio = (t) => setPortfolio(prev => prev.filter(x => x !== t));
 
   const runPortfolioAnalysis = async (over = null) => {
@@ -598,9 +604,9 @@ export default function App() {
     setInput("");
     if (isMobile) setMobileTab("chat");
 
-    const sid      = getSessionId() || await startSession();
-    let endpoint   = "/ask";
-    if (isCompare)   endpoint = "/compare/from-chat";
+    const sid    = getSessionId() || await startSession();
+    let endpoint = "/ask";
+    if (isCompare)        endpoint = "/compare/from-chat";
     else if (isPortfolio) endpoint = "/portfolio/from-chat";
 
     try {

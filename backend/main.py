@@ -1,6 +1,11 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, validator
+from dotenv import load_dotenv
+
+# Load .env before any module that reads os.getenv() at import time
+load_dotenv()
+
 from rag.retriever import build_context, get_stock_data, get_financial_news
 from rag.portfolio import build_portfolio_context, extract_tickers_from_query, get_portfolio_data
 from rag.comparison import build_comparison_context, extract_comparison_tickers, get_comparison_data
@@ -18,9 +23,6 @@ import re
 import logging
 import uvicorn
 
-# ── Logging ────────────────────────────────────────────────────────────────
-# BUG 13 FIX: no logging existed anywhere. Added structured logging so
-# errors and slow requests are visible in production.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s — %(message)s",
@@ -29,14 +31,6 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Quantiq - Python Service")
 
-# ── CORS ───────────────────────────────────────────────────────────────────
-# BUG 2 FIX: original used a single ALLOWED_ORIGIN env var but then
-# hard-coded two extra localhost origins alongside it, meaning the list
-# was never truly controlled by environment config alone.
-# Also: allow_methods=["*"] and allow_headers=["*"] are unnecessarily broad.
-#
-# Fix: parse a comma-separated ALLOWED_ORIGINS env var; localhost origins
-# are included automatically in development (when the var is unset).
 _raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")
 ALLOWED_ORIGINS = [o.strip() for o in _raw.split(",") if o.strip()]
 
@@ -48,9 +42,6 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# ── Ticker validation helper ───────────────────────────────────────────────
-# BUG 4 FIX: raw ticker strings were forwarded to yfinance without any
-# validation. Centralised here so every route benefits.
 _TICKER_RE = re.compile(r"^[A-Z]{1,5}(\.[A-Z]{1,2})?$")
 
 def validate_ticker(ticker: str) -> str:
@@ -60,14 +51,10 @@ def validate_ticker(ticker: str) -> str:
     return clean
 
 
-# ── Models ─────────────────────────────────────────────────────────────────
-
 class ContextRequest(BaseModel):
     question: str
     time_range: str = "7d"
 
-    # BUG 8 FIX: whitespace-only strings passed Pydantic validation silently.
-    # Validators catch this at the schema layer before any route logic runs.
     @validator("question")
     def question_not_blank(cls, v):
         if not v.strip():
@@ -204,15 +191,10 @@ class SentimentResponse(BaseModel):
     headlines: list[str]
 
 
-# ── Health ─────────────────────────────────────────────────────────────────
-# BUG 12 FIX: original returned an emoji in the status string which can
-# trip up monitoring tools that parse status fields.
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "Quantiq Python Service"}
 
-
-# ── Session ────────────────────────────────────────────────────────────────
 
 @app.post("/session/new", response_model=SessionResponse)
 def new_session():
@@ -226,8 +208,6 @@ def delete_session(session_id: str):
     return SessionResponse(session_id=session_id, cleared=True)
 
 
-# ── Context ────────────────────────────────────────────────────────────────
-
 @app.post("/context", response_model=ContextResponse)
 def get_context(req: ContextRequest):
     valid_ranges = {"24h", "3d", "7d", "30d", "1y"}
@@ -236,9 +216,6 @@ def get_context(req: ContextRequest):
             status_code=400,
             detail=f"Invalid time_range. Must be one of: {', '.join(sorted(valid_ranges))}"
         )
-
-    # BUG 3 FIX: external call (yfinance + NewsAPI) had no error handling.
-    # A network failure or API timeout previously surfaced as a raw 500 traceback.
     try:
         context = build_context(req.question, req.time_range)
     except Exception as e:
@@ -248,14 +225,11 @@ def get_context(req: ContextRequest):
     return ContextResponse(context=context)
 
 
-# ── Generate ───────────────────────────────────────────────────────────────
-
 @app.post("/generate", response_model=GenerateResponse)
 def get_response(req: GenerateRequest):
     session_id = req.session_id or create_session()
     history    = get_history(session_id)
 
-    # BUG 3 FIX: model inference had no error handling.
     try:
         answer = generate_response(req.question, req.context, history=history)
     except Exception as e:
@@ -266,11 +240,8 @@ def get_response(req: GenerateRequest):
     return GenerateResponse(answer=answer, session_id=session_id)
 
 
-# ── Stock ──────────────────────────────────────────────────────────────────
-
 @app.get("/stock/{ticker}", response_model=StockResponse)
 def stock(ticker: str):
-    # BUG 4 FIX: ticker forwarded raw to yfinance with no validation.
     ticker_clean = validate_ticker(ticker)
 
     try:
@@ -282,11 +253,8 @@ def stock(ticker: str):
     return StockResponse(ticker=ticker_clean, data=data)
 
 
-# ── Sentiment ──────────────────────────────────────────────────────────────
-
 @app.get("/sentiment/{ticker}", response_model=SentimentResponse)
 def sentiment(ticker: str, company: str = ""):
-    # BUG 4 FIX: same ticker validation applied here.
     ticker_clean = validate_ticker(ticker)
 
     try:
@@ -298,14 +266,11 @@ def sentiment(ticker: str, company: str = ""):
     return SentimentResponse(**result)
 
 
-# ── Portfolio ──────────────────────────────────────────────────────────────
-
 @app.post("/portfolio", response_model=PortfolioResponse)
 def analyze_portfolio(req: PortfolioRequest):
     if not req.tickers:
         raise HTTPException(status_code=400, detail="No tickers provided")
 
-    # BUG 4 FIX: validate every ticker in the list before hitting yfinance.
     tickers = list(dict.fromkeys(validate_ticker(t) for t in req.tickers if t.strip()))
     if len(tickers) > 20:
         raise HTTPException(status_code=400, detail="Maximum 20 tickers per portfolio")
@@ -340,11 +305,8 @@ def portfolio_from_chat(req: PortfolioFromChatRequest):
     return analyze_portfolio(PortfolioRequest(tickers=tickers, session_id=req.session_id))
 
 
-# ── Comparison ─────────────────────────────────────────────────────────────
-
 @app.post("/compare", response_model=CompareResponse)
 def compare_stocks(req: CompareRequest):
-    # BUG 4 FIX: validate both tickers.
     ticker_a = validate_ticker(req.ticker_a)
     ticker_b = validate_ticker(req.ticker_b)
 
@@ -388,8 +350,6 @@ def compare_from_chat(req: CompareFromChatRequest):
     ))
 
 
-# ── Forex ──────────────────────────────────────────────────────────────────
-
 @app.get("/forex/pairs")
 def list_forex_pairs():
     return {
@@ -411,9 +371,6 @@ def get_forex(req: ForexRequest):
 
     session_id = req.session_id or create_session()
 
-    # NEW BUG FIX: original called undefined get_financial_news_for_forex()
-    # before the helper function was defined further down the file.
-    # Inlined the one-liner directly here and removed the redundant helper.
     try:
         forex_data = get_forex_data(pair)
         news       = get_financial_news(pair.replace("/", " "), time_range="7d")
@@ -434,8 +391,6 @@ def forex_from_chat(req: ForexFromChatRequest):
     return get_forex(ForexRequest(pair=pair, session_id=req.session_id))
 
 
-# ── Explain ────────────────────────────────────────────────────────────────
-
 @app.post("/explain", response_model=ExplainResponse)
 def explain(req: ExplainRequest):
     session_id = req.session_id or create_session()
@@ -454,8 +409,6 @@ def explain(req: ExplainRequest):
     return ExplainResponse(term=req.term, explanation=explanation, session_id=session_id)
 
 
-# ── Alerts ─────────────────────────────────────────────────────────────────
-
 @app.post("/create_alert")
 def route_create_alert(req: AlertCreateRequest):
     direction = req.direction.lower()
@@ -464,7 +417,6 @@ def route_create_alert(req: AlertCreateRequest):
     if req.threshold <= 0:
         raise HTTPException(status_code=400, detail="threshold must be a positive number")
 
-    # BUG 4 FIX: ticker in alert creation was not validated either.
     ticker_clean = validate_ticker(req.ticker)
 
     return create_alert(
@@ -491,8 +443,6 @@ def route_check_alerts(req: AlertCheckRequest):
     triggered = check_alerts(req.session_id)
     return {"triggered": triggered}
 
-
-# ── Entry point ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8001))

@@ -121,7 +121,7 @@ def get_india_stock_data(ticker: str) -> str:
             f"52W High: {symbol}{info.get('fiftyTwoWeekHigh', 'N/A')}\n"
             f"52W Low: {symbol}{info.get('fiftyTwoWeekLow', 'N/A')}\n"
             f"P/E Ratio: {info.get('trailingPE', 'N/A')}\n"
-            f"Market Cap: {symbol}{info.get('marketCap', 0):,}\n"
+            f"Market Cap: {symbol}{int(info.get('marketCap') or 0):,}\n"
             f"EPS: {info.get('trailingEps', 'N/A')}\n"
             f"5-Day Change: {change_pct:.2f}%\n"
             f"Latest Volume: {int(latest_volume):,}\n"
