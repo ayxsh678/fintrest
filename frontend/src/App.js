@@ -159,21 +159,47 @@ const clearSession = async () => {
 // ── TradingView ─────────────────────────────────────────
 function TradingViewChart({ ticker, height = 220 }) {
   const ref = useRef(null);
+
   const tvSymbol = (t) => {
-  const map = { BTC: "BINANCE:BTCUSDT", ETH: "BINANCE:ETHUSDT", SOL: "BINANCE:SOLUSDT", BNB: "BINANCE:BNBUSDT", DOGE: "BINANCE:DOGEUSDT" };
-  if (map[t]) return map[t];
-  if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
-  if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
-  return t;
-};
+    const map = { 
+      BTC: "BINANCE:BTCUSDT", 
+      ETH: "BINANCE:ETHUSDT", 
+      SOL: "BINANCE:SOLUSDT", 
+      BNB: "BINANCE:BNBUSDT", 
+      DOGE: "BINANCE:DOGEUSDT" 
+    };
+    if (map[t]) return map[t];
+    if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
+    if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
+    // Default US stocks
+    return t.includes(":") ? t : `NASDAQ:${t}`;
+  };
+
+  useEffect(() => {
     if (!ref.current) return;
     ref.current.innerHTML = "";
     const s = document.createElement("script");
     s.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    s.type = "text/javascript"; s.async = true;
-    s.innerHTML = JSON.stringify({ autosize: true, symbol: tvSymbol(ticker), interval: "D", timezone: "Etc/UTC", theme: "dark", style: "1", locale: "en", allow_symbol_change: false, calendar: false, support_host: "https://www.tradingview.com", backgroundColor: "rgba(13,17,23,1)", gridColor: "rgba(33,38,45,1)" });
+    s.type = "text/javascript"; 
+    s.async = true;
+    s.innerHTML = JSON.stringify({ 
+      autosize: true, 
+      symbol: tvSymbol(ticker), 
+      interval: "D", 
+      timezone: "Etc/UTC", 
+      theme: "dark", 
+      style: "1", 
+      locale: "en", 
+      enable_publishing: false,
+      allow_symbol_change: false, 
+      calendar: false, 
+      support_host: "https://www.tradingview.com", 
+      backgroundColor: "rgba(13,17,23,1)", 
+      gridColor: "rgba(33,38,45,1)" 
+    });
     ref.current.appendChild(s);
   }, [ticker]);
+
   return <div ref={ref} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }} />;
 }
 
@@ -228,11 +254,10 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
           <div style={{ fontSize: 11, color: "#8b949e" }}>{stock.name}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>{stock.price >= 1000 ? `$${stock.price.toLocaleString()}` : `$${stock.price}`}</div>
-          <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change)}%</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>{stock.price >= 1000 ? `$${stock.price.toLocaleString()}` : `$${stock.price ?? '—'}`}</div>
+          <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}%</div>
         </div>
       </div>
-      {/* FIX: explicit width + pixel height on container, pixel height on ResponsiveContainer */}
       <div style={{ marginTop: 12, height: 50, width: "100%" }}>
         <ResponsiveContainer width="100%" height={50}>
           <AreaChart data={data}>
@@ -254,7 +279,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
 // ── Main Chart ──────────────────────────────────────────
 function MainChart({ stock }) {
   const data = generateChartData(stock.base, 60);
-  const isUp = stock.change >= 0;
+  const isUp = (stock.change ?? 0) >= 0;
   const ts = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px" }}>
@@ -267,11 +292,10 @@ function MainChart({ stock }) {
           <span style={{ fontSize: 12, color: "#8b949e" }}>{stock.name}</span>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>${stock.price.toLocaleString()}</div>
-          <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change)}% today</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>${stock.price?.toLocaleString() ?? '—'}</div>
+          <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}% today</div>
         </div>
       </div>
-      {/* FIX: wrap in a sized div so ResponsiveContainer always has a measured parent */}
       <div style={{ width: "100%", height: 160 }}>
         <ResponsiveContainer width="100%" height={160}>
           <AreaChart data={data}>
@@ -363,7 +387,6 @@ function AuthModal({ onSuccess }) {
 
 // ── Main App ────────────────────────────────────────────
 export default function App() {
-  // ── Responsive ────────────────────────────────────────
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [mobileTab, setMobileTab] = useState("market");
   const [activeTab, setActiveTab] = useState("watchlist");
@@ -374,13 +397,11 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // ── Auth ───────────────────────────────────────────────
   const [userState, setUserState] = useState(getUser());
   const [showAuth, setShowAuth]   = useState(!getToken());
   const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); };
   const handleLogout = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
 
-  // ── Core state ─────────────────────────────────────────
   const [watchlist, setWatchlist]               = useState(WATCHLIST_DEFAULT);
   const [selectedStock, setSelectedStock]       = useState(WATCHLIST_DEFAULT[0]);
   const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hello! I'm Quantiq, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto.", sources: [] }]);
@@ -388,19 +409,16 @@ export default function App() {
   const [loading, setLoading]                   = useState(false);
   const [timeRange, setTimeRange]               = useState("7d");
 
-  // ── Portfolio ──────────────────────────────────────────
   const [portfolio, setPortfolio]               = useState([]);
   const [portfolioInput, setPortfolioInput]     = useState("");
   const [portfolioData, setPortfolioData]       = useState(null);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
 
-  // ── Compare ────────────────────────────────────────────
   const [compareA, setCompareA]                 = useState("");
   const [compareB, setCompareB]                 = useState("");
   const [compareData, setCompareData]           = useState(null);
   const [compareLoading, setCompareLoading]     = useState(false);
 
-  // ── Alerts ─────────────────────────────────────────────
   const [alerts, setAlerts]                     = useState([]);
   const [alertTicker, setAlertTicker]           = useState("");
   const [alertThreshold, setAlertThreshold]     = useState("");
@@ -408,7 +426,6 @@ export default function App() {
   const [alertCreating, setAlertCreating]       = useState(false);
   const [triggeredNotifs, setTriggeredNotifs]   = useState([]);
 
-  // ── Sentiment ──────────────────────────────────────────
   const [sentiments, setSentiments]             = useState({});
   const [sentimentLoading, setSentimentLoading] = useState({});
 
@@ -417,7 +434,6 @@ export default function App() {
   useEffect(() => { if (!getSessionId()) startSession(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // ── Live watchlist prices ──────────────────────────────
   useEffect(() => {
     const fetchPrices = async () => {
       const updated = await Promise.all(
@@ -435,34 +451,30 @@ export default function App() {
               ? parseFloat(((price - prev) / prev * 100).toFixed(2))
               : null;
             return { ...stock, price, change, base: price ?? stock.base };
-          } catch {
-            return stock;
-          }
+          } catch { return stock; }
         })
       );
       setWatchlist(updated);
-      // Keep selectedStock in sync with fresh prices
       setSelectedStock(prev => updated.find(s => s.ticker === prev.ticker) ?? prev);
     };
     fetchPrices();
-    const interval = setInterval(fetchPrices, 60_000); // refresh every 60s
+    const interval = setInterval(fetchPrices, 60_000);
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line
+  }, []);
 
   const fetchSentiment = useCallback(async (ticker, name = "") => {
     if (sentiments[ticker] !== undefined) return;
     setSentimentLoading(prev => ({ ...prev, [ticker]: true }));
     try {
       const res = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
-      if (!res.ok) throw new Error();
       const data = await res.json();
       setSentiments(prev => ({ ...prev, [ticker]: data }));
     } catch { setSentiments(prev => ({ ...prev, [ticker]: null })); }
     setSentimentLoading(prev => ({ ...prev, [ticker]: false }));
   }, [sentiments]);
 
-  useEffect(() => { watchlist.forEach(s => fetchSentiment(s.ticker, s.name)); }, []); // eslint-disable-line
-  useEffect(() => { fetchSentiment(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker]); // eslint-disable-line
+  useEffect(() => { watchlist.forEach(s => fetchSentiment(s.ticker, s.name)); }, [watchlist, fetchSentiment]);
+  useEffect(() => { fetchSentiment(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker, fetchSentiment]);
 
   useEffect(() => {
     const poll = async () => {
@@ -475,9 +487,9 @@ export default function App() {
       } catch {}
     };
     poll();
-    const t = setInterval(poll, 5 * 60 * 1000);
+    const t = setInterval(poll, 300_000);
     return () => clearInterval(t);
-  }, []); // eslint-disable-line
+  }, []);
 
   const fetchAlerts = async () => {
     const sid = getSessionId();
@@ -491,13 +503,11 @@ export default function App() {
 
   const createAlert = async () => {
     if (!alertTicker.trim() || !alertThreshold) return;
-    const threshold = parseFloat(alertThreshold);
-    if (isNaN(threshold) || threshold <= 0) return;
     setAlertCreating(true);
     try {
       const sid = getSessionId() || await startSession();
-      await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, ticker: alertTicker.toUpperCase().trim(), threshold, direction: alertDirection }) });
-      setAlertTicker(""); setAlertThreshold(""); await fetchAlerts();
+      await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, ticker: alertTicker.toUpperCase().trim(), threshold: parseFloat(alertThreshold), direction: alertDirection }) });
+      setAlertTicker(""); setAlertThreshold(""); fetchAlerts();
     } catch {}
     setAlertCreating(false);
   };
@@ -505,11 +515,11 @@ export default function App() {
   const deleteAlert = async (id) => {
     const sid = getSessionId();
     if (!sid) return;
-    try { await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) }); await fetchAlerts(); } catch {}
+    try { await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) }); fetchAlerts(); } catch {}
   };
 
   const dismissNotif = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
-  const addToPortfolio = (t) => { const v = t.trim(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
+  const addToPortfolio = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
   const removeFromPortfolio = (t) => setPortfolio(prev => prev.filter(x => x !== t));
 
   const runPortfolioAnalysis = async (over = null) => {
@@ -522,14 +532,14 @@ export default function App() {
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
       setPortfolioData(data);
-    } catch { setPortfolioData({ error: "Failed to fetch portfolio data." }); }
+    } catch { setPortfolioData({ error: "Portfolio analysis failed." }); }
     setPortfolioLoading(false);
   };
 
   const runComparison = async (a = null, b = null) => {
-    const ta = (a || compareA).trim(), tb = (b || compareB).trim();
+    const ta = (a || compareA).trim().toUpperCase(), tb = (b || compareB).trim().toUpperCase();
     if (!ta || !tb) return;
-    setCompareLoading(true); setCompareData(null);
+    setCompareLoading(true);
     try {
       const sid = getSessionId() || await startSession();
       const res = await fetch(`${API_URL}/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticker_a: ta, ticker_b: tb, session_id: sid }) });
@@ -545,49 +555,36 @@ export default function App() {
   const sendMessage = async (question) => {
     if (!question.trim() || loading) return;
     const lower = question.toLowerCase();
-    const isCompare   = lower.includes(" vs ") || lower.includes(" versus ") || lower.includes("compare ");
-    const isPortfolio = lower.includes("portfolio") || lower.startsWith("track ") || lower.includes("analyze my") || lower.includes("analyze portfolio");
+    const isCompare   = lower.includes(" vs ") || lower.includes("compare ");
+    const isPortfolio = lower.includes("portfolio") || lower.includes("analyze my");
     setLoading(true);
     setMessages(prev => [...prev, { role: "user", content: question }]);
     setInput("");
     if (isMobile) setMobileTab("chat");
 
-    if (isCompare) {
-      try {
-        const sid = getSessionId() || await startSession();
-        const res = await fetch(`${API_URL}/compare/from-chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: question, session_id: sid }) });
-        const data = await res.json();
-        if (data.session_id) setSessionId(data.session_id);
-        if (data.ticker_a && data.ticker_b) {
-          setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data);
-          fetchSentiment(data.ticker_a); fetchSentiment(data.ticker_b);
-          setMessages(prev => [...prev, { role: "assistant", content: data.verdict, sources: ["Yahoo Finance (real-time)"] }]);
-        } else { setMessages(prev => [...prev, { role: "assistant", content: data.detail || "Try: 'compare AAPL vs TSLA'", sources: [] }]); }
-      } catch { setMessages(prev => [...prev, { role: "assistant", content: "Comparison failed.", sources: [] }]); }
-      setLoading(false); return;
-    }
-
-    if (isPortfolio) {
-      try {
-        const sid = getSessionId() || await startSession();
-        const res = await fetch(`${API_URL}/portfolio/from-chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: question, session_id: sid }) });
-        const data = await res.json();
-        if (data.session_id) setSessionId(data.session_id);
-        if (data.tickers) {
-          setPortfolio(data.tickers); setPortfolioData(data);
-          data.tickers.forEach(t => fetchSentiment(t));
-          setMessages(prev => [...prev, { role: "assistant", content: data.summary, sources: ["Yahoo Finance (real-time)"] }]);
-        } else { setMessages(prev => [...prev, { role: "assistant", content: data.detail || "Try: 'analyze portfolio AAPL BTC INFY.NS'", sources: [] }]); }
-      } catch { setMessages(prev => [...prev, { role: "assistant", content: "Portfolio analysis failed.", sources: [] }]); }
-      setLoading(false); return;
-    }
+    const sid = getSessionId() || await startSession();
+    let endpoint = "/ask";
+    if (isCompare) endpoint = "/compare/from-chat";
+    else if (isPortfolio) endpoint = "/portfolio/from-chat";
 
     try {
-      const sid = getSessionId() || await startSession();
-      const res = await fetch(`${API_URL}/ask`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, include_sources: true, session_id: sid, time_range: timeRange }) });
+      const res = await fetch(`${API_URL}${endpoint}`, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ question, query: question, session_id: sid, time_range: timeRange }) 
+      });
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
-      setMessages(prev => [...prev, { role: "assistant", content: data.answer, sources: data.sources, responseTime: data.response_time }]);
+
+      if (isCompare && data.ticker_a) {
+        setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data);
+        setMessages(prev => [...prev, { role: "assistant", content: data.verdict, sources: ["Yahoo Finance"] }]);
+      } else if (isPortfolio && data.tickers) {
+        setPortfolio(data.tickers); setPortfolioData(data);
+        setMessages(prev => [...prev, { role: "assistant", content: data.summary, sources: ["Yahoo Finance"] }]);
+      } else {
+        setMessages(prev => [...prev, { role: "assistant", content: data.answer || data.detail, sources: data.sources || [], responseTime: data.response_time }]);
+      }
     } catch { setMessages(prev => [...prev, { role: "assistant", content: "Connection error.", sources: [] }]); }
     setLoading(false);
   };
@@ -597,10 +594,9 @@ export default function App() {
     setMessages([{ role: "assistant", content: "New conversation started. What would you like to know?", sources: [] }]);
   };
 
-  const activeAlerts    = alerts.filter(a => !a.triggered);
+  const activeAlerts = alerts.filter(a => !a.triggered);
   const triggeredAlerts = alerts.filter(a => a.triggered);
 
-  // ── Left panel tab content ─────────────────────────────
   const tabStyle = (tab) => ({
     flex: 1, padding: "7px 0", fontSize: 10, fontWeight: 600,
     letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer",
@@ -608,7 +604,6 @@ export default function App() {
     background: activeTab === tab ? "#161b22" : "transparent",
     color: activeTab === tab ? "#f7c843" : "#8b949e",
     borderBottom: activeTab === tab ? "2px solid #f7c843" : "2px solid transparent",
-    transition: "all 0.15s",
   });
 
   const renderLeftPanelContent = () => (
@@ -628,409 +623,157 @@ export default function App() {
 
       {activeTab === "compare" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: 11, color: "#8b949e" }}>Works with US, India (.NS/.BO) and crypto</div>
           <input value={compareA} onChange={e => setCompareA(e.target.value.toUpperCase())} placeholder="Ticker A (e.g. RELIANCE.NS)"
             style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
-          <div style={{ textAlign: "center", fontSize: 11, color: "#8b949e" }}>vs</div>
           <input value={compareB} onChange={e => setCompareB(e.target.value.toUpperCase())} placeholder="Ticker B (e.g. TCS.NS)"
-            style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }}
-            onKeyDown={e => e.key === "Enter" && runComparison()} />
+            style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
           <button onClick={() => runComparison()} disabled={compareLoading || !compareA || !compareB}
-            style={{ width: "100%", background: (compareLoading || !compareA || !compareB) ? "#21262d" : "#f7c843", color: (compareLoading || !compareA || !compareB) ? "#8b949e" : "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-            {compareLoading ? "Comparing..." : "Compare"}
+            style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            {compareLoading ? "..." : "Compare"}
           </button>
-          {compareData && !compareData.error && (
-            <div style={{ marginTop: 8 }}>
-              <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />
-              {compareData.verdict && <div style={{ marginTop: 10, background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 12, fontSize: 11, color: "#8b949e", lineHeight: 1.6, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto" }}>{compareData.verdict}</div>}
-            </div>
-          )}
-          {compareData?.error && <div style={{ fontSize: 11, color: "#f85149" }}>{compareData.error}</div>}
+          {compareData && !compareData.error && <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />}
         </div>
       )}
 
       {activeTab === "portfolio" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontSize: 11, color: "#8b949e" }}>Mix US stocks, India (.NS) and crypto</div>
           <div style={{ display: "flex", gap: 6 }}>
             <input value={portfolioInput} onChange={e => setPortfolioInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") { addToPortfolio(portfolioInput); setPortfolioInput(""); } }}
               placeholder="e.g. AAPL, BTC, INFY.NS"
-              style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#e6edf3", fontFamily: "'DM Sans', sans-serif" }} />
-            <button onClick={() => { addToPortfolio(portfolioInput); setPortfolioInput(""); }}
-              style={{ background: "#21262d", border: "none", borderRadius: 8, padding: "10px 14px", color: "#f7c843", fontSize: 18, cursor: "pointer", fontWeight: 700 }}>+</button>
+              style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", color: "#e6edf3" }} />
+            <button onClick={() => { addToPortfolio(portfolioInput); setPortfolioInput(""); }} style={{ background: "#21262d", color: "#f7c843", padding: "0 15px", borderRadius: 8, border: "none", fontSize: 18 }}>+</button>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {portfolio.map(t => (
-              <div key={t} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#f7c843", fontFamily: "'DM Mono', monospace", display: "flex", alignItems: "center", gap: 6 }}>
-                {t}<span onClick={() => removeFromPortfolio(t)} style={{ color: "#8b949e", cursor: "pointer", fontSize: 16 }}>×</span>
+              <div key={t} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#f7c843", display: "flex", alignItems: "center", gap: 6 }}>
+                {t}<span onClick={() => removeFromPortfolio(t)} style={{ color: "#8b949e", cursor: "pointer" }}>×</span>
               </div>
             ))}
           </div>
           {portfolio.length > 0 && (
             <button onClick={() => runPortfolioAnalysis()} disabled={portfolioLoading}
-              style={{ width: "100%", background: portfolioLoading ? "#21262d" : "#f7c843", color: portfolioLoading ? "#8b949e" : "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-              {portfolioLoading ? "Analyzing..." : `Analyze ${portfolio.length} asset${portfolio.length > 1 ? "s" : ""}`}
+              style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700 }}>
+              {portfolioLoading ? "Analyzing..." : "Analyze Portfolio"}
             </button>
           )}
-          {portfolioData && !portfolioData.error && portfolioData.tickers && (
-            <div style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 12 }}>
-              {portfolioData.tickers.map(ticker => {
-                const s = portfolioData.breakdown?.[ticker]?.stock || "";
-                const assetType = portfolioData.breakdown?.[ticker]?.asset_type || "us_stock";
-                const isCrypto = assetType === "crypto", isIndia = assetType === "india_stock";
-                const priceMatch = isCrypto ? s.match(/Price \(USD\): \$([^\n]+)/) : s.match(/Current Price: [₹$]([^\n]+)/);
-                const price = priceMatch?.[1], change = s.match(/(?:5-Day|24h) Change: ([^\n]+)/)?.[1];
-                const pe = s.match(/P\/E Ratio: ([^\n]+)/)?.[1], mcap = s.match(/Market Cap: [₹$]?([^\n]+)/)?.[1];
-                const sent = sentiments[ticker];
-                const ts = isCrypto ? TYPE_STYLES.Crypto : isIndia ? TYPE_STYLES.India : TYPE_STYLES.US;
-                const tl = isCrypto ? "Crypto" : isIndia ? "India" : "US";
-                return (
-                  <div key={ticker} style={{ padding: "8px 0", borderBottom: "1px solid #21262d" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{ticker}</span>
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: ts.bg, color: ts.color }}>{tl}</span>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 13, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }}>{price ? (isIndia ? `₹${price}` : `$${price}`) : "—"}</div>
-                        <div style={{ fontSize: 11, color: change?.includes("-") ? "#f85149" : "#3fb950" }}>{change || "—"}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
-                      {pe && <span style={{ fontSize: 10, color: "#8b949e" }}>P/E {pe}</span>}
-                      {mcap && <span style={{ fontSize: 10, color: "#8b949e" }}>MCap {mcap.slice(0, 12)}</span>}
-                      {sent && <span style={{ fontSize: 10, color: sentimentColor(sent.score), fontWeight: 600 }}>● {sent.label} {sent.score}</span>}
-                    </div>
-                    <SentimentBar score={sent?.score ?? null} loading={sentimentLoading[ticker] ?? false} />
-                  </div>
-                );
-              })}
-              {portfolioData.summary && <div style={{ marginTop: 10, fontSize: 11, color: "#8b949e", lineHeight: 1.6, whiteSpace: "pre-wrap", maxHeight: 140, overflowY: "auto" }}>{portfolioData.summary}</div>}
-            </div>
-          )}
-          {portfolioData?.error && <div style={{ fontSize: 11, color: "#f85149" }}>{portfolioData.error}</div>}
         </div>
       )}
 
       {activeTab === "alerts" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {triggeredNotifs.map((n, i) => (
-            <div key={i} className="alert-notif">
-              <span style={{ fontSize: 14 }}>🔔</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: "#f7c843", fontFamily: "'DM Mono', monospace", marginBottom: 2 }}>{n.ticker} triggered</div>
-                <div style={{ color: "#8b949e", fontSize: 11 }}>{n.direction === "above" ? "Rose above" : "Fell below"} ${n.threshold} — hit ${n.triggered_price}</div>
-              </div>
-              <button onClick={() => dismissNotif(i)} style={{ background: "none", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 13, padding: 0 }}>✕</button>
-            </div>
-          ))}
-          <div style={{ fontSize: 11, color: "#8b949e" }}>Set a price alert — works for stocks, India & crypto</div>
-          <input value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="Ticker (AAPL, BTC, INFY.NS…)"
-            style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
+          <input value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="Ticker"
+            style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", color: "#e6edf3" }} />
           <div style={{ display: "flex", gap: 8 }}>
-            <input value={alertThreshold} onChange={e => setAlertThreshold(e.target.value)} placeholder="Price" type="number" min="0" step="0.01"
-              style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
+            <input value={alertThreshold} onChange={e => setAlertThreshold(e.target.value)} placeholder="Price" type="number"
+              style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", color: "#e6edf3" }} />
             <select value={alertDirection} onChange={e => setAlertDirection(e.target.value)}
-              style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 10px", fontSize: 13, color: "#e6edf3", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-              <option value="above">Above ↑</option>
-              <option value="below">Below ↓</option>
+              style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px", color: "#e6edf3" }}>
+              <option value="above">Above</option><option value="below">Below</option>
             </select>
           </div>
-          <button onClick={createAlert} disabled={alertCreating || !alertTicker.trim() || !alertThreshold}
-            style={{ width: "100%", background: (alertCreating || !alertTicker.trim() || !alertThreshold) ? "#21262d" : "#f7c843", color: (alertCreating || !alertTicker.trim() || !alertThreshold) ? "#8b949e" : "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-            {alertCreating ? "Adding..." : "+ Add Alert"}
-          </button>
-          {alerts.length > 0 && (
-            <div style={{ borderTop: "1px solid #21262d", paddingTop: 12, marginTop: 4 }}>
-              {activeAlerts.length > 0 && (
-                <>
-                  <div style={{ fontSize: 10, color: "#8b949e", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Active ({activeAlerts.length})</div>
-                  {activeAlerts.map(a => (
-                    <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#161b22", border: "1px solid #21262d", borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
-                      <div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{a.ticker}</div>
-                        <div style={{ fontSize: 11, color: "#8b949e", marginTop: 1 }}>{a.direction === "above" ? "↑ above" : "↓ below"} ${a.threshold}</div>
-                      </div>
-                      <button onClick={() => deleteAlert(a.id)} style={{ background: "none", border: "1px solid #21262d", borderRadius: 6, padding: "5px 10px", color: "#8b949e", cursor: "pointer", fontSize: 12 }}>✕</button>
-                    </div>
-                  ))}
-                </>
-              )}
-              {triggeredAlerts.length > 0 && (
-                <>
-                  <div style={{ fontSize: 10, color: "#8b949e", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", margin: "12px 0 8px" }}>Triggered</div>
-                  {triggeredAlerts.map(a => (
-                    <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0d1117", border: "1px solid #21262d", borderRadius: 10, padding: "10px 12px", marginBottom: 6, opacity: 0.6 }}>
-                      <div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#3fb950", fontWeight: 700 }}>✓ {a.ticker}</div>
-                        <div style={{ fontSize: 11, color: "#8b949e", marginTop: 1 }}>hit ${a.triggered_price} ({a.direction} ${a.threshold})</div>
-                      </div>
-                      <button onClick={() => deleteAlert(a.id)} style={{ background: "none", border: "1px solid #21262d", borderRadius: 6, padding: "5px 10px", color: "#8b949e", cursor: "pointer", fontSize: 12 }}>✕</button>
-                    </div>
-                  ))}
-                </>
-              )}
+          <button onClick={createAlert} disabled={alertCreating} style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0" }}>+ Add Alert</button>
+          {activeAlerts.map(a => (
+            <div key={a.id} style={{ display: "flex", justifyContent: "space-between", background: "#161b22", padding: 10, borderRadius: 8 }}>
+              <span style={{ color: "#f7c843" }}>{a.ticker} @ {a.threshold}</span>
+              <button onClick={() => deleteAlert(a.id)} style={{ background: "none", border: "none", color: "#8b949e" }}>✕</button>
             </div>
-          )}
-          {alerts.length === 0 && <div style={{ fontSize: 11, color: "#8b949e", textAlign: "center", marginTop: 8 }}>No alerts yet. Add one above.</div>}
+          ))}
         </div>
       )}
     </div>
   );
 
-  // ── Center panel content ───────────────────────────────
   const renderCenterContent = () => (
     <div style={{ padding: isMobile ? 16 : 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
       {compareData && !compareData.error && compareData.ticker_a ? (
         <>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 15 : 18, color: "#f7c843", fontWeight: 700 }}>{compareData.ticker_a}</span>
-            <span style={{ fontSize: 12, color: "#8b949e" }}>vs</span>
-            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 15 : 18, color: "#f7c843", fontWeight: 700 }}>{compareData.ticker_b}</span>
-            <button onClick={() => setCompareData(null)} style={{ marginLeft: "auto", background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#8b949e", cursor: "pointer" }}>← Back</button>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "#f7c843", fontWeight: 700 }}>{compareData.ticker_a} vs {compareData.ticker_b}</span>
+            <button onClick={() => setCompareData(null)} style={{ background: "#161b22", color: "#8b949e", border: "none", borderRadius: 8, padding: "4px 10px" }}>Back</button>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 6, fontFamily: "'DM Mono', monospace" }}>{compareData.ticker_a}</div>
-              <TradingViewChart ticker={compareData.ticker_a} height={isMobile ? 180 : 220} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: "#8b949e", marginBottom: 6, fontFamily: "'DM Mono', monospace" }}>{compareData.ticker_b}</div>
-              <TradingViewChart ticker={compareData.ticker_b} height={isMobile ? 180 : 220} />
-            </div>
+            <TradingViewChart ticker={compareData.ticker_a} height={isMobile ? 180 : 220} />
+            <TradingViewChart ticker={compareData.ticker_b} height={isMobile ? 180 : 220} />
           </div>
           <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-            <SentimentGauge ticker={compareData.ticker_a} sentiment={sentiments[compareData.ticker_a] ?? null} loading={sentimentLoading[compareData.ticker_a] ?? false} />
-            <SentimentGauge ticker={compareData.ticker_b} sentiment={sentiments[compareData.ticker_b] ?? null} loading={sentimentLoading[compareData.ticker_b] ?? false} />
-          </div>
         </>
       ) : (
         <>
           <MainChart stock={selectedStock} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-            {[{ label: "Market Cap", value: "$3.76T" }, { label: "P/E Ratio", value: "32.35" }, { label: "EPS", value: "$7.91" }, { label: "Div Yield", value: "0.41%" }].map((stat, i) => (
-              <div key={i} style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 12, padding: "12px 14px", textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: "#8b949e", marginBottom: 4 }}>{stat.label}</div>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 14, color: "#f7c843", fontWeight: 700 }}>{stat.value}</div>
-              </div>
-            ))}
-          </div>
           <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
         </>
       )}
       {!isMobile && (
-        <div>
-          <div style={{ fontSize: 11, color: "#8b949e", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 10 }}>Quick Ask</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {SUGGESTIONS.map((s, i) => (
-              <button key={i} onClick={() => sendMessage(s)} style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: "7px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer", transition: "all 0.15s" }}
-                onMouseEnter={e => { e.target.style.borderColor = "#f7c843"; e.target.style.color = "#f7c843"; }}
-                onMouseLeave={e => { e.target.style.borderColor = "#21262d"; e.target.style.color = "#8b949e"; }}>
-                {s}
-              </button>
-            ))}
-          </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {SUGGESTIONS.map((s, i) => (
+            <button key={i} onClick={() => sendMessage(s)} style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: "7px 14px", color: "#8b949e", cursor: "pointer" }}>{s}</button>
+          ))}
         </div>
       )}
     </div>
   );
 
-  // ── Chat panel content ─────────────────────────────────
   const renderChatContent = () => (
     <>
-      {!isMobile && (
-        <div style={{ padding: "12px 20px", borderBottom: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#e6edf3" }}>Quantiq Advisor</span>
-          <select value={timeRange} onChange={e => setTimeRange(e.target.value)}
-            style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#8b949e", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-            <option value="24h">24h</option><option value="3d">3d</option><option value="7d">7d</option><option value="30d">30d</option><option value="1y">1y</option>
-          </select>
-        </div>
-      )}
-      <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 16px 0" : "20px" }}>
-        {isMobile && (
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12, marginBottom: 8 }}>
-            {SUGGESTIONS.map((s, i) => (
-              <button key={i} onClick={() => sendMessage(s)}
-                style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 12px", fontSize: 11, color: "#8b949e", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+      {!isMobile && <div style={{ padding: 15, borderBottom: "1px solid #21262d", fontWeight: 700 }}>Quantiq Advisor</div>}
+      <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
         {messages.map((msg, i) => <ChatBubble key={i} msg={msg} />)}
-        {loading && (
-          <div style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: "18px 18px 18px 4px", padding: "12px 16px", fontSize: 13, color: "#8b949e", display: "inline-block" }}>
-            Quantiq is analyzing market data...
-          </div>
-        )}
+        {loading && <div style={{ color: "#8b949e", fontSize: 13 }}>Analyzing market data...</div>}
         <div ref={bottomRef} />
       </div>
-      <div style={{ padding: isMobile ? "12px 16px" : "16px 20px", borderTop: "1px solid #21262d", display: "flex", gap: 10 }}>
-        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage(input)}
-          placeholder="Ask about stocks, crypto, Indian markets…"
-          style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: "11px 14px", fontSize: 15, color: "#e6edf3", fontFamily: "'DM Sans', sans-serif" }} />
-        <button onClick={() => sendMessage(input)} disabled={loading}
-          style={{ background: loading ? "#21262d" : "#f7c843", color: loading ? "#8b949e" : "#0d1117", border: "none", borderRadius: 12, padding: "11px 16px", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-          {loading ? "..." : "Ask"}
-        </button>
+      <div style={{ padding: 15, borderTop: "1px solid #21262d", display: "flex", gap: 10 }}>
+        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage(input)} placeholder="Ask anything..." style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 12, color: "#e6edf3" }} />
+        <button onClick={() => sendMessage(input)} style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 12, padding: "0 20px", fontWeight: 700 }}>Ask</button>
       </div>
     </>
   );
 
-  // ── Mobile bottom nav ──────────────────────────────────
-  const mobileNavItems = [
-    { id: "market",    icon: "📈", label: "Market"    },
-    { id: "chat",      icon: "💬", label: "Chat"      },
-    { id: "watchlist", icon: "⭐", label: "Watch"     },
-    { id: "more",      icon: "⋯",  label: "More"      },
-  ];
-
   return (
     <>
       {showAuth && <AuthModal onSuccess={handleAuthSuccess} />}
-      <div style={{ minHeight: "100vh", background: "#010409", fontFamily: "'DM Sans', sans-serif", color: "#e6edf3", display: "flex", flexDirection: "column" }}>
+      <div style={{ minHeight: "100vh", background: "#010409", color: "#e6edf3", display: "flex", flexDirection: "column" }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500;700&display=swap');
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { background: #010409; }
-          ::-webkit-scrollbar { width: 4px; height: 4px; }
-          ::-webkit-scrollbar-track { background: transparent; }
+          body { background: #010409; font-family: 'DM Sans', sans-serif; }
+          ::-webkit-scrollbar { width: 4px; }
           ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
-          textarea:focus, input:focus, select { outline: none; }
-          .alert-notif { display: flex; align-items: flex-start; gap: 8px; background: #1a2332; border: 1px solid #2d4a6e; border-radius: 10px; padding: 10px 12px; font-size: 12px; color: #79c0ff; margin-bottom: 8px; animation: slideIn 0.2s ease; }
-          @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
         `}</style>
 
-        {/* Alert toasts */}
-        {triggeredNotifs.length > 0 && (
-          <div style={{ position: "fixed", top: 70, right: 12, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, maxWidth: isMobile ? "calc(100vw - 24px)" : 300 }}>
-            {triggeredNotifs.map((n, i) => (
-              <div key={i} style={{ background: "#1a2332", border: "1px solid #2d4a6e", borderRadius: 12, padding: "12px 14px", fontSize: 12, color: "#79c0ff", boxShadow: "0 4px 24px rgba(0,0,0,0.5)", animation: "slideIn 0.2s ease" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div>
-                    <div style={{ fontWeight: 700, marginBottom: 3, color: "#f7c843", fontFamily: "'DM Mono', monospace" }}>🔔 {n.ticker} Alert</div>
-                    <div style={{ color: "#8b949e" }}>Price {n.direction} ${n.threshold} — hit ${n.triggered_price}</div>
-                  </div>
-                  <button onClick={() => dismissNotif(i)} style={{ background: "none", border: "none", color: "#8b949e", cursor: "pointer", fontSize: 14, padding: 0 }}>✕</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Header */}
-        <header style={{ borderBottom: "1px solid #21262d", padding: isMobile ? "12px 16px" : "14px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0d1117" }}>
+        <header style={{ borderBottom: "1px solid #21262d", padding: "12px 32px", display: "flex", justifyContent: "space-between", background: "#0d1117" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 32, height: 32, background: "#f7c843", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💹</div>
-            <div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 14 : 16, fontWeight: 700, color: "#e6edf3" }}>Quantiq</div>
-              {!isMobile && <div style={{ fontSize: 11, color: "#8b949e" }}>US · India · Crypto · Real-time</div>}
-            </div>
+            <div style={{ background: "#f7c843", padding: "4px 8px", borderRadius: 8, color: "#0d1117" }}>💹</div>
+            <span style={{ fontWeight: 700, fontSize: 18 }}>Quantiq</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "5px 12px", fontSize: 11, color: "#3fb950", display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#3fb950" }} />Live
-            </div>
-            {!isMobile && (
-              <>
-                <button onClick={handleNewChat} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#8b949e", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}
-                  onMouseEnter={e => { e.target.style.borderColor = "#f7c843"; e.target.style.color = "#f7c843"; }}
-                  onMouseLeave={e => { e.target.style.borderColor = "#21262d"; e.target.style.color = "#8b949e"; }}>
-                  + New chat
-                </button>
-                {userState && (
-                  <button onClick={handleLogout} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#f85149", cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                    Sign out
-                  </button>
-                )}
-              </>
-            )}
-            {isMobile && userState && (
-              <button onClick={handleLogout} style={{ background: "none", border: "none", color: "#f85149", cursor: "pointer", fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>Out</button>
-            )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={handleNewChat} style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: "6px 15px", borderRadius: 20 }}>+ New</button>
+            {userState && <button onClick={handleLogout} style={{ color: "#f85149", background: "none", border: "none" }}>Sign Out</button>}
           </div>
         </header>
 
-        {/* ── DESKTOP LAYOUT ── */}
         {!isMobile ? (
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "300px 1fr 380px", overflow: "hidden", height: "calc(100vh - 65px)" }}>
-            {/* Left panel */}
-            <div style={{ borderRight: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117" }}>
-              <div style={{ display: "flex", borderBottom: "1px solid #21262d" }}>
+            <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex" }}>
                 <button style={tabStyle("watchlist")} onClick={() => setActiveTab("watchlist")}>Watch</button>
-                <button style={tabStyle("compare")}   onClick={() => setActiveTab("compare")}>Compare</button>
-                <button style={tabStyle("portfolio")} onClick={() => setActiveTab("portfolio")}>Portfolio</button>
-                <button style={{ ...tabStyle("alerts"), position: "relative" }} onClick={() => { setActiveTab("alerts"); fetchAlerts(); }}>
-                  Alerts
-                  {activeAlerts.length > 0 && <span style={{ position: "absolute", top: 4, right: 4, background: "#f7c843", color: "#0d1117", borderRadius: "50%", width: 14, height: 14, fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{activeAlerts.length}</span>}
-                </button>
+                <button style={tabStyle("compare")} onClick={() => setActiveTab("compare")}>Compare</button>
+                <button style={tabStyle("portfolio")} onClick={() => setActiveTab("portfolio")}>Port</button>
+                <button style={tabStyle("alerts")} onClick={() => { setActiveTab("alerts"); fetchAlerts(); }}>Alerts</button>
               </div>
               {renderLeftPanelContent()}
             </div>
-            {/* Center */}
             <div style={{ overflowY: "auto" }}>{renderCenterContent()}</div>
-            {/* Right / Chat */}
-            <div style={{ borderLeft: "1px solid #21262d", display: "flex", flexDirection: "column", background: "#0d1117" }}>
-              {renderChatContent()}
-            </div>
+            <div style={{ borderLeft: "1px solid #21262d", background: "#0d1117", display: "flex", flexDirection: "column" }}>{renderChatContent()}</div>
           </div>
         ) : (
-          /* ── MOBILE LAYOUT ── */
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", height: "calc(100vh - 57px)" }}>
-            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-              {mobileTab === "market" && (
-                <div style={{ flex: 1, overflowY: "auto" }}>
-                  {renderCenterContent()}
-                </div>
-              )}
-              {mobileTab === "chat" && (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                  {renderChatContent()}
-                </div>
-              )}
-              {mobileTab === "watchlist" && (
-                <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {watchlist.map(stock => (
-                      <StockCard key={stock.ticker} stock={stock}
-                        isSelected={selectedStock.ticker === stock.ticker}
-                        onClick={() => { setSelectedStock(stock); setMobileTab("market"); }}
-                        sentiment={sentiments[stock.ticker] ?? null}
-                        sentimentLoading={sentimentLoading[stock.ticker] ?? false}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {mobileTab === "more" && (
-                <div style={{ flex: 1, overflowY: "auto" }}>
-                  <div style={{ display: "flex", borderBottom: "1px solid #21262d", background: "#0d1117" }}>
-                    {["compare", "portfolio", "alerts"].map(t => (
-                      <button key={t} onClick={() => setActiveTab(t)}
-                        style={{ flex: 1, padding: "10px 0", fontSize: 11, fontWeight: 600, textTransform: "capitalize", border: "none", cursor: "pointer", fontFamily: "'DM Sans', sans-serif", background: activeTab === t ? "#161b22" : "transparent", color: activeTab === t ? "#f7c843" : "#8b949e", borderBottom: activeTab === t ? "2px solid #f7c843" : "2px solid transparent" }}>
-                        {t === "alerts" && activeAlerts.length > 0 ? `Alerts (${activeAlerts.length})` : t.charAt(0).toUpperCase() + t.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                  {(activeTab === "compare" || activeTab === "portfolio" || activeTab === "alerts") && renderLeftPanelContent()}
-                </div>
-              )}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {mobileTab === "market" ? renderCenterContent() : mobileTab === "chat" ? renderChatContent() : renderLeftPanelContent()}
             </div>
-
-            {/* Mobile bottom navigation */}
-            <div style={{ borderTop: "1px solid #21262d", background: "#0d1117", display: "flex", paddingBottom: "env(safe-area-inset-bottom)" }}>
-              {mobileNavItems.map(item => (
-                <button key={item.id} onClick={() => { setMobileTab(item.id); if (item.id === "more" && !["compare","portfolio","alerts"].includes(activeTab)) setActiveTab("compare"); if (item.id === "more") fetchAlerts(); }}
-                  style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "10px 0 8px", border: "none", background: "transparent", cursor: "pointer", transition: "all 0.15s" }}>
-                  <span style={{ fontSize: 20 }}>{item.icon}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: mobileTab === item.id ? "#f7c843" : "#8b949e", fontFamily: "'DM Sans', sans-serif" }}>{item.label}</span>
-                  {item.id === "more" && activeAlerts.length > 0 && (
-                    <span style={{ position: "absolute", width: 8, height: 8, background: "#f7c843", borderRadius: "50%", marginTop: -2 }} />
-                  )}
-                </button>
+            <div style={{ display: "flex", borderTop: "1px solid #21262d", background: "#0d1117", padding: 10 }}>
+              {["market", "chat", "watchlist", "more"].map(t => (
+                <button key={t} onClick={() => setMobileTab(t)} style={{ flex: 1, background: "none", border: "none", color: mobileTab === t ? "#f7c843" : "#8b949e", fontSize: 11, textTransform: "capitalize" }}>{t}</button>
               ))}
             </div>
           </div>
