@@ -7,12 +7,12 @@ import {
 const API_URL = "https://quantiq-go.onrender.com";
 
 // ── Auth helpers ────────────────────────────────────────
-const getToken = () => localStorage.getItem("fintrest_token");
-const setToken = (t) => localStorage.setItem("fintrest_token", t);
+const getToken    = () => localStorage.getItem("fintrest_token");
+const setToken    = (t) => localStorage.setItem("fintrest_token", t);
 const removeToken = () => localStorage.removeItem("fintrest_token");
-const getUser = () => { try { return JSON.parse(localStorage.getItem("fintrest_user")); } catch { return null; } };
-const setUser = (u) => localStorage.setItem("fintrest_user", JSON.stringify(u));
-const removeUser = () => localStorage.removeItem("fintrest_user");
+const getUser  = () => { try { return JSON.parse(localStorage.getItem("fintrest_user")); } catch { return null; } };
+const setUser  = (u) => localStorage.setItem("fintrest_user", JSON.stringify(u));
+const removeUser  = () => localStorage.removeItem("fintrest_user");
 
 // ── Chart data ──────────────────────────────────────────
 const generateChartData = (base, points = 30) => {
@@ -81,10 +81,10 @@ function SentimentBar({ score, loading }) {
 }
 
 function SentimentGauge({ ticker, sentiment, loading }) {
-  const score = sentiment?.score ?? null;
-  const label = sentiment?.label ?? "—";
-  const color = sentimentColor(score);
-  const count = sentiment?.headline_count ?? 0;
+  const score     = sentiment?.score ?? null;
+  const label     = sentiment?.label ?? "—";
+  const color     = sentimentColor(score);
+  const count     = sentiment?.headline_count ?? 0;
   const headlines = sentiment?.headlines ?? [];
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px 24px" }}>
@@ -138,12 +138,12 @@ function SentimentGauge({ ticker, sentiment, loading }) {
 }
 
 // ── Session helpers ─────────────────────────────────────
-const getSessionId = () => localStorage.getItem("fintrest_session_id");
-const setSessionId = (id) => localStorage.setItem("fintrest_session_id", id);
+const getSessionId    = () => localStorage.getItem("fintrest_session_id");
+const setSessionId    = (id) => localStorage.setItem("fintrest_session_id", id);
 const removeSessionId = () => localStorage.removeItem("fintrest_session_id");
 const startSession = async () => {
   try {
-    const res = await fetch(`${API_URL}/session/new`, { method: "POST" });
+    const res  = await fetch(`${API_URL}/session/new`, { method: "POST" });
     const data = await res.json();
     setSessionId(data.session_id);
     return data.session_id;
@@ -151,7 +151,7 @@ const startSession = async () => {
 };
 const clearSession = async () => {
   const sid = getSessionId();
-  if (sid) { try { await fetch(`${API_URL}/session/${sid}`, { method: "DELETE" }); } catch { } }
+  if (sid) { try { await fetch(`${API_URL}/session/${sid}`, { method: "DELETE" }); } catch {} }
   removeSessionId();
   return startSession();
 };
@@ -177,50 +177,47 @@ function TradingViewChart({ ticker, height = 220 }) {
   useEffect(() => {
     if (!ref.current) return;
 
-    // Force full DOM wipe including any lingering iframes
     while (ref.current.firstChild) {
       ref.current.removeChild(ref.current.firstChild);
     }
 
     const container = document.createElement("div");
-    container.className = "tradingview-widget-container__widget";
     container.style.height = "100%";
     container.style.width  = "100%";
     ref.current.appendChild(container);
 
-    const s = document.createElement("script");
-    s.src   = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    s.type  = "text/javascript";
-    s.async = true;
+    const s    = document.createElement("script");
+    s.src      = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    s.type     = "text/javascript";
+    s.async    = true;
     s.innerHTML = JSON.stringify({
-      autosize:          true,
-      symbol:            tvSymbol(ticker),
-      interval:          "D",
-      timezone:          "Etc/UTC",
-      theme:             "dark",
-      style:             "1",
-      locale:            "en",
-      enable_publishing: false,
+      autosize:            true,
+      symbol:              tvSymbol(ticker),
+      interval:            "D",
+      timezone:            "Etc/UTC",
+      theme:               "dark",
+      style:               "1",
+      locale:              "en",
+      enable_publishing:   false,
       allow_symbol_change: false,
-      calendar:          false,
-      support_host:      "https://www.tradingview.com",
-      backgroundColor:   "rgba(13,17,23,1)",
-      gridColor:         "rgba(33,38,45,1)",
+      calendar:            false,
+      support_host:        "https://www.tradingview.com",
+      backgroundColor:     "rgba(13,17,23,1)",
+      gridColor:           "rgba(33,38,45,1)",
     });
     ref.current.appendChild(s);
 
-    // Cleanup on unmount or ticker change
     return () => {
       if (ref.current) ref.current.innerHTML = "";
     };
   }, [ticker]);
 
+  // ✅ key on wrapper forces full React remount when ticker changes
+  // ✅ ref on inner div so React doesn't conflict with key
   return (
-    <div
-      key={ticker}
-      ref={ref}
-      style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }}
-    />
+    <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }}>
+      <div ref={ref} style={{ height: "100%", width: "100%" }} />
+    </div>
   );
 }
 
@@ -243,12 +240,16 @@ function CompareTable({ data, ticker_a, ticker_b }) {
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 14, overflow: "hidden" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "#161b22", borderBottom: "1px solid #21262d" }}>
         <div style={{ padding: "10px 10px", fontSize: 10, color: "#8b949e" }} />
-        {[ticker_a, ticker_b].map(t => <div key={t} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700 }}>{t}</div>)}
+        {[ticker_a, ticker_b].map(t => (
+          <div key={t} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700 }}>{t}</div>
+        ))}
       </div>
       {rows.map((row, i) => (
         <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: i < rows.length - 1 ? "1px solid #21262d" : "none", background: i % 2 === 0 ? "#0d1117" : "#0a0f16" }}>
           <div style={{ padding: "7px 10px", fontSize: 10, color: "#8b949e" }}>{row.label}</div>
-          {[row.a, row.b].map((val, j) => <div key={j} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3" }}>{val}</div>)}
+          {[row.a, row.b].map((val, j) => (
+            <div key={j} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3" }}>{val}</div>
+          ))}
         </div>
       ))}
     </div>
@@ -263,7 +264,7 @@ const CustomTooltip = ({ active, payload }) => active && payload?.length
 function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) {
   const data = generateChartData(stock.base);
   const isUp = stock.change >= 0;
-  const ts = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
+  const ts   = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
   return (
     <div onClick={onClick} style={{ background: isSelected ? "#161b22" : "#0d1117", border: `1px solid ${isSelected ? "#f7c843" : "#21262d"}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -275,8 +276,12 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
           <div style={{ fontSize: 11, color: "#8b949e" }}>{stock.name}</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>{stock.price >= 1000 ? `$${stock.price.toLocaleString()}` : `$${stock.price ?? '—'}`}</div>
-          <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}%</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>
+            {stock.price >= 1000 ? `$${stock.price.toLocaleString()}` : `$${stock.price ?? "—"}`}
+          </div>
+          <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>
+            {isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}%
+          </div>
         </div>
       </div>
       <div style={{ marginTop: 12, height: 50, width: "100%" }}>
@@ -284,7 +289,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
           <AreaChart data={data}>
             <defs>
               <linearGradient id={`g-${stock.ticker}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.3} />
+                <stop offset="5%"  stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.3} />
                 <stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -301,7 +306,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
 function MainChart({ stock }) {
   const data = generateChartData(stock.base, 60);
   const isUp = (stock.change ?? 0) >= 0;
-  const ts = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
+  const ts   = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -313,7 +318,7 @@ function MainChart({ stock }) {
           <span style={{ fontSize: 12, color: "#8b949e" }}>{stock.name}</span>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>${stock.price?.toLocaleString() ?? '—'}</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>${stock.price?.toLocaleString() ?? "—"}</div>
           <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}% today</div>
         </div>
       </div>
@@ -322,7 +327,7 @@ function MainChart({ stock }) {
           <AreaChart data={data}>
             <defs>
               <linearGradient id="mainGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.25} />
+                <stop offset="5%"  stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.25} />
                 <stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -348,8 +353,12 @@ function ChatBubble({ msg }) {
       </div>
       {msg.sources?.length > 0 && (
         <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-          {msg.sources.map((s, i) => <span key={i} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "2px 10px", fontSize: 11, color: "#8b949e" }}>📡 {s}</span>)}
-          {msg.responseTime && <span style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "2px 10px", fontSize: 11, color: "#8b949e" }}>⚡ {msg.responseTime}s</span>}
+          {msg.sources.map((s, i) => (
+            <span key={i} style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "2px 10px", fontSize: 11, color: "#8b949e" }}>📡 {s}</span>
+          ))}
+          {msg.responseTime && (
+            <span style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 20, padding: "2px 10px", fontSize: 11, color: "#8b949e" }}>⚡ {msg.responseTime}s</span>
+          )}
         </div>
       )}
     </div>
@@ -358,22 +367,24 @@ function ChatBubble({ msg }) {
 
 // ── Auth Modal ──────────────────────────────────────────
 function AuthModal({ onSuccess }) {
-  const [mode, setMode] = useState("login");
-  const [email, setEmail] = useState("");
+  const [mode, setMode]       = useState("login");
+  const [email, setEmail]     = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
+
   const submit = async () => {
     if (!email || !password) return;
     setLoading(true); setError("");
     try {
-      const res = await fetch(`${API_URL}/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const res  = await fetch(`${API_URL}/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Something went wrong"); setLoading(false); return; }
       setToken(data.token); setUser({ email: data.email, user_id: data.user_id }); onSuccess();
     } catch { setError("Connection error"); }
     setLoading(false);
   };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(1,4,9,0.92)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: 28, width: "100%", maxWidth: 360, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
@@ -421,7 +432,7 @@ export default function App() {
   const [userState, setUserState] = useState(getUser());
   const [showAuth, setShowAuth]   = useState(!getToken());
   const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); };
-  const handleLogout = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
+  const handleLogout      = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
 
   const [watchlist, setWatchlist]               = useState(WATCHLIST_DEFAULT);
   const [selectedStock, setSelectedStock]       = useState(WATCHLIST_DEFAULT[0]);
@@ -460,14 +471,14 @@ export default function App() {
       const updated = await Promise.all(
         WATCHLIST_DEFAULT.map(async (stock) => {
           try {
-            const res = await fetch(`${API_URL}/stock/${stock.ticker}`);
+            const res  = await fetch(`${API_URL}/stock/${stock.ticker}`);
             if (!res.ok) return stock;
             const json = await res.json();
-            const raw = typeof json.data === "string" ? json.data : "";
-            const priceMatch  = raw.match(/Current Price:\s*\$?([\d,.]+)/);
-            const prevMatch   = raw.match(/Previous Close:\s*\$?([\d,.]+)/);
-            const price = priceMatch  ? parseFloat(priceMatch[1].replace(/,/g, ""))  : null;
-            const prev  = prevMatch   ? parseFloat(prevMatch[1].replace(/,/g, ""))   : null;
+            const raw  = typeof json.data === "string" ? json.data : "";
+            const priceMatch = raw.match(/Current Price:\s*\$?([\d,.]+)/);
+            const prevMatch  = raw.match(/Previous Close:\s*\$?([\d,.]+)/);
+            const price  = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, "")) : null;
+            const prev   = prevMatch  ? parseFloat(prevMatch[1].replace(/,/g, "")) : null;
             const change = (price !== null && prev !== null && prev !== 0)
               ? parseFloat(((price - prev) / prev * 100).toFixed(2))
               : null;
@@ -487,7 +498,7 @@ export default function App() {
     if (sentiments[ticker] !== undefined) return;
     setSentimentLoading(prev => ({ ...prev, [ticker]: true }));
     try {
-      const res = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
+      const res  = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
       const data = await res.json();
       setSentiments(prev => ({ ...prev, [ticker]: data }));
     } catch { setSentiments(prev => ({ ...prev, [ticker]: null })); }
@@ -502,7 +513,7 @@ export default function App() {
       const sid = getSessionId();
       if (!sid) return;
       try {
-        const res = await fetch(`${API_URL}/check_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
+        const res  = await fetch(`${API_URL}/check_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
         const data = await res.json();
         if (data.triggered?.length) { setTriggeredNotifs(prev => [...prev, ...data.triggered]); fetchAlerts(); }
       } catch {}
@@ -516,7 +527,7 @@ export default function App() {
     const sid = getSessionId();
     if (!sid) return;
     try {
-      const res = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
+      const res  = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : []);
     } catch {}
@@ -536,11 +547,14 @@ export default function App() {
   const deleteAlert = async (id) => {
     const sid = getSessionId();
     if (!sid) return;
-    try { await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) }); fetchAlerts(); } catch {}
+    try {
+      await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) });
+      fetchAlerts();
+    } catch {}
   };
 
-  const dismissNotif = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
-  const addToPortfolio = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
+  const dismissNotif       = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
+  const addToPortfolio     = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
   const removeFromPortfolio = (t) => setPortfolio(prev => prev.filter(x => x !== t));
 
   const runPortfolioAnalysis = async (over = null) => {
@@ -548,8 +562,8 @@ export default function App() {
     if (!tickers.length) return;
     setPortfolioLoading(true);
     try {
-      const sid = getSessionId() || await startSession();
-      const res = await fetch(`${API_URL}/portfolio`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers, session_id: sid }) });
+      const sid  = getSessionId() || await startSession();
+      const res  = await fetch(`${API_URL}/portfolio`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickers, session_id: sid }) });
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
       setPortfolioData(data);
@@ -558,12 +572,13 @@ export default function App() {
   };
 
   const runComparison = async (a = null, b = null) => {
-    const ta = (a || compareA).trim().toUpperCase(), tb = (b || compareB).trim().toUpperCase();
+    const ta = (a || compareA).trim().toUpperCase();
+    const tb = (b || compareB).trim().toUpperCase();
     if (!ta || !tb) return;
     setCompareLoading(true);
     try {
-      const sid = getSessionId() || await startSession();
-      const res = await fetch(`${API_URL}/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticker_a: ta, ticker_b: tb, session_id: sid }) });
+      const sid  = getSessionId() || await startSession();
+      const res  = await fetch(`${API_URL}/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticker_a: ta, ticker_b: tb, session_id: sid }) });
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
       setCompareData(data);
@@ -575,7 +590,7 @@ export default function App() {
 
   const sendMessage = async (question) => {
     if (!question.trim() || loading) return;
-    const lower = question.toLowerCase();
+    const lower       = question.toLowerCase();
     const isCompare   = lower.includes(" vs ") || lower.includes("compare ");
     const isPortfolio = lower.includes("portfolio") || lower.includes("analyze my");
     setLoading(true);
@@ -583,16 +598,16 @@ export default function App() {
     setInput("");
     if (isMobile) setMobileTab("chat");
 
-    const sid = getSessionId() || await startSession();
-    let endpoint = "/ask";
-    if (isCompare) endpoint = "/compare/from-chat";
+    const sid      = getSessionId() || await startSession();
+    let endpoint   = "/ask";
+    if (isCompare)   endpoint = "/compare/from-chat";
     else if (isPortfolio) endpoint = "/portfolio/from-chat";
 
     try {
-      const res = await fetch(`${API_URL}${endpoint}`, { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ question, query: question, session_id: sid, time_range: timeRange }) 
+      const res  = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, query: question, session_id: sid, time_range: timeRange }),
       });
       const data = await res.json();
       if (data.session_id) setSessionId(data.session_id);
@@ -615,15 +630,15 @@ export default function App() {
     setMessages([{ role: "assistant", content: "New conversation started. What would you like to know?", sources: [] }]);
   };
 
-  const activeAlerts = alerts.filter(a => !a.triggered);
+  const activeAlerts    = alerts.filter(a => !a.triggered);
   const triggeredAlerts = alerts.filter(a => a.triggered);
 
   const tabStyle = (tab) => ({
     flex: 1, padding: "7px 0", fontSize: 10, fontWeight: 600,
     letterSpacing: 0.5, textTransform: "uppercase", cursor: "pointer",
     border: "none", fontFamily: "'DM Sans', sans-serif",
-    background: activeTab === tab ? "#161b22" : "transparent",
-    color: activeTab === tab ? "#f7c843" : "#8b949e",
+    background:   activeTab === tab ? "#161b22" : "transparent",
+    color:        activeTab === tab ? "#f7c843" : "#8b949e",
     borderBottom: activeTab === tab ? "2px solid #f7c843" : "2px solid transparent",
   });
 
@@ -652,7 +667,9 @@ export default function App() {
             style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
             {compareLoading ? "..." : "Compare"}
           </button>
-          {compareData && !compareData.error && <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />}
+          {compareData && !compareData.error && (
+            <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />
+          )}
         </div>
       )}
 
@@ -663,7 +680,8 @@ export default function App() {
               onKeyDown={e => { if (e.key === "Enter") { addToPortfolio(portfolioInput); setPortfolioInput(""); } }}
               placeholder="e.g. AAPL, BTC, INFY.NS"
               style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", color: "#e6edf3" }} />
-            <button onClick={() => { addToPortfolio(portfolioInput); setPortfolioInput(""); }} style={{ background: "#21262d", color: "#f7c843", padding: "0 15px", borderRadius: 8, border: "none", fontSize: 18 }}>+</button>
+            <button onClick={() => { addToPortfolio(portfolioInput); setPortfolioInput(""); }}
+              style={{ background: "#21262d", color: "#f7c843", padding: "0 15px", borderRadius: 8, border: "none", fontSize: 18 }}>+</button>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {portfolio.map(t => (
@@ -690,10 +708,14 @@ export default function App() {
               style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", color: "#e6edf3" }} />
             <select value={alertDirection} onChange={e => setAlertDirection(e.target.value)}
               style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px", color: "#e6edf3" }}>
-              <option value="above">Above</option><option value="below">Below</option>
+              <option value="above">Above</option>
+              <option value="below">Below</option>
             </select>
           </div>
-          <button onClick={createAlert} disabled={alertCreating} style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0" }}>+ Add Alert</button>
+          <button onClick={createAlert} disabled={alertCreating}
+            style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0" }}>
+            + Add Alert
+          </button>
           {activeAlerts.map(a => (
             <div key={a.id} style={{ display: "flex", justifyContent: "space-between", background: "#161b22", padding: 10, borderRadius: 8 }}>
               <span style={{ color: "#f7c843" }}>{a.ticker} @ {a.threshold}</span>
@@ -722,13 +744,20 @@ export default function App() {
       ) : (
         <>
           <MainChart stock={selectedStock} />
-          <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
+          <SentimentGauge
+            ticker={selectedStock.ticker}
+            sentiment={sentiments[selectedStock.ticker] ?? null}
+            loading={sentimentLoading[selectedStock.ticker] ?? false}
+          />
         </>
       )}
       {!isMobile && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           {SUGGESTIONS.map((s, i) => (
-            <button key={i} onClick={() => sendMessage(s)} style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: "7px 14px", color: "#8b949e", cursor: "pointer" }}>{s}</button>
+            <button key={i} onClick={() => sendMessage(s)}
+              style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: "7px 14px", color: "#8b949e", cursor: "pointer" }}>
+              {s}
+            </button>
           ))}
         </div>
       )}
@@ -744,8 +773,14 @@ export default function App() {
         <div ref={bottomRef} />
       </div>
       <div style={{ padding: 15, borderTop: "1px solid #21262d", display: "flex", gap: 10 }}>
-        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage(input)} placeholder="Ask anything..." style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 12, color: "#e6edf3" }} />
-        <button onClick={() => sendMessage(input)} style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 12, padding: "0 20px", fontWeight: 700 }}>Ask</button>
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && sendMessage(input)}
+          placeholder="Ask anything..."
+          style={{ flex: 1, background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 12, color: "#e6edf3" }} />
+        <button onClick={() => sendMessage(input)}
+          style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 12, padding: "0 20px", fontWeight: 700 }}>
+          Ask
+        </button>
       </div>
     </>
   );
@@ -778,9 +813,9 @@ export default function App() {
             <div style={{ borderRight: "1px solid #21262d", background: "#0d1117", display: "flex", flexDirection: "column" }}>
               <div style={{ display: "flex" }}>
                 <button style={tabStyle("watchlist")} onClick={() => setActiveTab("watchlist")}>Watch</button>
-                <button style={tabStyle("compare")} onClick={() => setActiveTab("compare")}>Compare</button>
+                <button style={tabStyle("compare")}   onClick={() => setActiveTab("compare")}>Compare</button>
                 <button style={tabStyle("portfolio")} onClick={() => setActiveTab("portfolio")}>Port</button>
-                <button style={tabStyle("alerts")} onClick={() => { setActiveTab("alerts"); fetchAlerts(); }}>Alerts</button>
+                <button style={tabStyle("alerts")}    onClick={() => { setActiveTab("alerts"); fetchAlerts(); }}>Alerts</button>
               </div>
               {renderLeftPanelContent()}
             </div>
@@ -790,11 +825,16 @@ export default function App() {
         ) : (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ flex: 1, overflowY: "auto" }}>
-              {mobileTab === "market" ? renderCenterContent() : mobileTab === "chat" ? renderChatContent() : renderLeftPanelContent()}
+              {mobileTab === "market"    ? renderCenterContent()  :
+               mobileTab === "chat"     ? renderChatContent()    :
+               renderLeftPanelContent()}
             </div>
             <div style={{ display: "flex", borderTop: "1px solid #21262d", background: "#0d1117", padding: 10 }}>
               {["market", "chat", "watchlist", "more"].map(t => (
-                <button key={t} onClick={() => setMobileTab(t)} style={{ flex: 1, background: "none", border: "none", color: mobileTab === t ? "#f7c843" : "#8b949e", fontSize: 11, textTransform: "capitalize" }}>{t}</button>
+                <button key={t} onClick={() => setMobileTab(t)}
+                  style={{ flex: 1, background: "none", border: "none", color: mobileTab === t ? "#f7c843" : "#8b949e", fontSize: 11, textTransform: "capitalize" }}>
+                  {t}
+                </button>
               ))}
             </div>
           </div>
