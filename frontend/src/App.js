@@ -23,13 +23,13 @@ const generateChartData = (base, points = 30) => {
   });
 };
 
-const WATCHLIST = [
-  { ticker: "AAPL",        name: "Apple Inc.",    price: 255.92, change: +2.86, base: 248,   type: "US"     },
-  { ticker: "NVDA",        name: "NVIDIA Corp.",  price: 887.3,  change: +3.51, base: 860,   type: "US"     },
-  { ticker: "RELIANCE.NS", name: "Reliance Ind.", price: 2987,   change: +1.24, base: 2950,  type: "India"  },
-  { ticker: "TCS.NS",      name: "TCS",           price: 3842,   change: -0.87, base: 3900,  type: "India"  },
-  { ticker: "BTC",         name: "Bitcoin",       price: 83200,  change: +2.14, base: 81000, type: "Crypto" },
-  { ticker: "ETH",         name: "Ethereum",      price: 3820,   change: -1.05, base: 3900,  type: "Crypto" },
+const WATCHLIST_DEFAULT = [
+  { ticker: "AAPL",        name: "Apple Inc.",    price: null, change: null, base: 248,   type: "US"     },
+  { ticker: "NVDA",        name: "NVIDIA Corp.",  price: null, change: null, base: 860,   type: "US"     },
+  { ticker: "RELIANCE.NS", name: "Reliance Ind.", price: null, change: null, base: 2950,  type: "India"  },
+  { ticker: "TCS.NS",      name: "TCS",           price: null, change: null, base: 3900,  type: "India"  },
+  { ticker: "BTC",         name: "Bitcoin",       price: null, change: null, base: 81000, type: "Crypto" },
+  { ticker: "ETH",         name: "Ethereum",      price: null, change: null, base: 3900,  type: "Crypto" },
 ];
 
 const SUGGESTIONS = [
@@ -159,8 +159,13 @@ const clearSession = async () => {
 // ── TradingView ─────────────────────────────────────────
 function TradingViewChart({ ticker, height = 220 }) {
   const ref = useRef(null);
-  const tvSymbol = (t) => ({ BTC: "BINANCE:BTCUSDT", ETH: "BINANCE:ETHUSDT", SOL: "BINANCE:SOLUSDT", BNB: "BINANCE:BNBUSDT", DOGE: "BINANCE:DOGEUSDT" }[t] || t);
-  useEffect(() => {
+  const tvSymbol = (t) => {
+  const map = { BTC: "BINANCE:BTCUSDT", ETH: "BINANCE:ETHUSDT", SOL: "BINANCE:SOLUSDT", BNB: "BINANCE:BNBUSDT", DOGE: "BINANCE:DOGEUSDT" };
+  if (map[t]) return map[t];
+  if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
+  if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
+  return t;
+};
     if (!ref.current) return;
     ref.current.innerHTML = "";
     const s = document.createElement("script");
@@ -376,7 +381,8 @@ export default function App() {
   const handleLogout = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
 
   // ── Core state ─────────────────────────────────────────
-  const [selectedStock, setSelectedStock]       = useState(WATCHLIST[0]);
+  const [watchlist, setWatchlist]               = useState(WATCHLIST_DEFAULT);
+  const [selectedStock, setSelectedStock]       = useState(WATCHLIST_DEFAULT[0]);
   const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hello! I'm Quantiq, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto.", sources: [] }]);
   const [input, setInput]                       = useState("");
   const [loading, setLoading]                   = useState(false);
@@ -411,6 +417,38 @@ export default function App() {
   useEffect(() => { if (!getSessionId()) startSession(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  // ── Live watchlist prices ──────────────────────────────
+  useEffect(() => {
+    const fetchPrices = async () => {
+      const updated = await Promise.all(
+        WATCHLIST_DEFAULT.map(async (stock) => {
+          try {
+            const res = await fetch(`${API_URL}/stock/${stock.ticker}`);
+            if (!res.ok) return stock;
+            const json = await res.json();
+            const raw = typeof json.data === "string" ? json.data : "";
+            const priceMatch  = raw.match(/Current Price:\s*\$?([\d,.]+)/);
+            const prevMatch   = raw.match(/Previous Close:\s*\$?([\d,.]+)/);
+            const price = priceMatch  ? parseFloat(priceMatch[1].replace(/,/g, ""))  : null;
+            const prev  = prevMatch   ? parseFloat(prevMatch[1].replace(/,/g, ""))   : null;
+            const change = (price !== null && prev !== null && prev !== 0)
+              ? parseFloat(((price - prev) / prev * 100).toFixed(2))
+              : null;
+            return { ...stock, price, change, base: price ?? stock.base };
+          } catch {
+            return stock;
+          }
+        })
+      );
+      setWatchlist(updated);
+      // Keep selectedStock in sync with fresh prices
+      setSelectedStock(prev => updated.find(s => s.ticker === prev.ticker) ?? prev);
+    };
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 60_000); // refresh every 60s
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line
+
   const fetchSentiment = useCallback(async (ticker, name = "") => {
     if (sentiments[ticker] !== undefined) return;
     setSentimentLoading(prev => ({ ...prev, [ticker]: true }));
@@ -423,7 +461,7 @@ export default function App() {
     setSentimentLoading(prev => ({ ...prev, [ticker]: false }));
   }, [sentiments]);
 
-  useEffect(() => { WATCHLIST.forEach(s => fetchSentiment(s.ticker, s.name)); }, []); // eslint-disable-line
+  useEffect(() => { watchlist.forEach(s => fetchSentiment(s.ticker, s.name)); }, []); // eslint-disable-line
   useEffect(() => { fetchSentiment(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker]); // eslint-disable-line
 
   useEffect(() => {
@@ -577,7 +615,7 @@ export default function App() {
     <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
       {activeTab === "watchlist" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {WATCHLIST.map(stock => (
+          {watchlist.map(stock => (
             <StockCard key={stock.ticker} stock={stock}
               isSelected={selectedStock.ticker === stock.ticker}
               onClick={() => { setSelectedStock(stock); if (isMobile) setMobileTab("market"); }}
@@ -956,7 +994,7 @@ export default function App() {
               {mobileTab === "watchlist" && (
                 <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {WATCHLIST.map(stock => (
+                    {watchlist.map(stock => (
                       <StockCard key={stock.ticker} stock={stock}
                         isSelected={selectedStock.ticker === stock.ticker}
                         onClick={() => { setSelectedStock(stock); setMobileTab("market"); }}
