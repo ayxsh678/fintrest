@@ -8,3 +8,4 @@ redis==7.4.0
 Requests==2.33.1
 uvicorn==0.44.0
 yfinance==1.2.1
+# cache-bust
