@@ -87,6 +87,7 @@ func buildContext(question, timeRange string) string {
 		pythonURL()+"/context", "application/json", bytes.NewBuffer(payload),
 	)
 	if err != nil {
+		log.Printf("[buildContext] retrieval service error: %v", err)
 		return "System: Retrieval service currently unavailable."
 	}
 	defer resp.Body.Close()
@@ -95,6 +96,7 @@ func buildContext(question, timeRange string) string {
 		Context string `json:"context"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[buildContext] decode error: %v", err)
 		return ""
 	}
 	return result.Context
@@ -113,6 +115,7 @@ func generateResponse(question, context, sessionID string) (string, string) {
 		pythonURL()+"/generate", "application/json", bytes.NewBuffer(payload),
 	)
 	if err != nil {
+		log.Printf("[generateResponse] inference service error: %v", err)
 		return "System: Inference engine currently unavailable.", sessionID
 	}
 	defer resp.Body.Close()
@@ -122,7 +125,11 @@ func generateResponse(question, context, sessionID string) (string, string) {
 		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[generateResponse] decode error: %v", err)
 		return "Error decoding AI response.", sessionID
+	}
+	if result.SessionID == "" {
+		result.SessionID = sessionID
 	}
 	return result.Answer, result.SessionID
 }
@@ -130,11 +137,15 @@ func generateResponse(question, context, sessionID string) (string, string) {
 func getStockData(ticker string) interface{} {
 	resp, err := httpClient.Get(pythonURL() + "/stock/" + ticker)
 	if err != nil {
+		log.Printf("[getStockData] error for %s: %v", ticker, err)
 		return gin.H{"error": "Stock service unavailable"}
 	}
 	defer resp.Body.Close()
 	var result interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("[getStockData] decode error: %v", err)
+		return gin.H{"error": "Failed to decode stock data"}
+	}
 	return result
 }
 
@@ -167,18 +178,23 @@ func detectSources(context string) []string {
 func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proxyPost marshal error: %w", err)
 	}
 	resp, err := httpClient.Post(
 		pythonURL()+path, "application/json", bytes.NewBuffer(payload),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proxyPost request error [%s]: %w", path, err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("proxyPost upstream error [%s]: status %d", path, resp.StatusCode)
+	}
+
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proxyPost decode error [%s]: %w", path, err)
 	}
 	return result, nil
 }
@@ -186,18 +202,23 @@ func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
 func proxyPostSlice(path string, body interface{}) ([]interface{}, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proxyPostSlice marshal error: %w", err)
 	}
 	resp, err := httpClient.Post(
 		pythonURL()+path, "application/json", bytes.NewBuffer(payload),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proxyPostSlice request error [%s]: %w", path, err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("proxyPostSlice upstream error [%s]: status %d", path, resp.StatusCode)
+	}
+
 	var result []interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("proxyPostSlice decode error [%s]: %w", path, err)
 	}
 	return result, nil
 }
@@ -229,7 +250,7 @@ func sendAlertEmail(alert map[string]interface{}) {
 		ticker, direction, threshold, triggeredPrice,
 	)
 
-	msg  := fmt.Sprintf("Subject: %s\r\n\r\n%s", subject, body)
+	msg  := fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", alertEmail, subject, body)
 	auth := smtp.PlainAuth("", smtpUser, smtpPass, "smtp.gmail.com")
 
 	if err := smtp.SendMail("smtp.gmail.com:587", auth, smtpUser,
@@ -245,9 +266,10 @@ func sendAlertEmail(alert map[string]interface{}) {
 func startAlertPoller() {
 	go func() {
 		log.Println("[alert poller] Started — checking every 5 minutes")
-		for {
-			time.Sleep(5 * time.Minute)
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
 
+		for range ticker.C {
 			sessions := getActiveSessions()
 			if len(sessions) == 0 {
 				continue
@@ -286,12 +308,15 @@ func startAlertPoller() {
 // ── Main ───────────────────────────────────────────────
 
 func main() {
+	// Must be first — JWT secret required before any auth route fires
+	initJWTSecret()
 	InitDB()
+
 	r := gin.Default()
 
 	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
 	if allowedOrigin == "" {
-		allowedOrigin = "https://quantiq-frontend.vercel.app" // update to your actual Vercel URL
+		allowedOrigin = "https://quantiq-frontend.vercel.app"
 	}
 	allowedOrigins := []string{allowedOrigin, "http://localhost:3000", "http://localhost:5173"}
 
@@ -355,7 +380,10 @@ func main() {
 		}
 		defer resp.Body.Close()
 		var result interface{}
-		json.NewDecoder(resp.Body).Decode(&result)
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode sentiment data"})
+			return
+		}
 		c.JSON(http.StatusOK, result)
 	})
 
@@ -515,7 +543,7 @@ func main() {
 		c.JSON(http.StatusOK, result)
 	})
 
-	// ── Explain (beginner mode) ────────────────────────
+	// ── Explain ────────────────────────────────────────
 	r.POST("/explain", func(c *gin.Context) {
 		var req struct {
 			Term      string `json:"term" binding:"required"`
@@ -603,9 +631,9 @@ func main() {
 	authGroup := r.Group("/")
 	authGroup.Use(AuthMiddleware())
 	{
-		authGroup.GET("/watchlist",              handleGetWatchlist)
-		authGroup.POST("/watchlist",             handleAddWatchlist)
-		authGroup.DELETE("/watchlist/:ticker",   handleDeleteWatchlist)
+		authGroup.GET("/watchlist",            handleGetWatchlist)
+		authGroup.POST("/watchlist",           handleAddWatchlist)
+		authGroup.DELETE("/watchlist/:ticker", handleDeleteWatchlist)
 	}
 
 	// ── Start poller + server ──────────────────────────

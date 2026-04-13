@@ -1,8 +1,52 @@
+# ── Python ─────────────────────────────────────────────
 venv/
 backend/venv/
 __pycache__/
 *.pyc
 *.pyo
-.env
+*.pyd
 *.egg-info/
+dist/
+build/
+.pytest_cache/
+*.coverage
+.mypy_cache/
+
+# ── Go ─────────────────────────────────────────────────
+*.exe
+*.out
+*.test
+/bin/
+vendor/
+
+# ── Environment / Secrets ───────────────────────────────
+.env
+.env.*
+*.env
+.env.local
+.env.production
+.env.staging
+
+# ── ML Model weights ───────────────────────────────────
 model/weights/
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.pkl
+*.bin
+
+# ── OS junk ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editors ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Logs ───────────────────────────────────────────────
+*.log
+logs/

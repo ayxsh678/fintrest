@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -11,14 +13,14 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var jwtSecret = []byte(getJWTSecret())
+var jwtSecret []byte
 
-func getJWTSecret() string {
+func initJWTSecret() {
 	s := os.Getenv("JWT_SECRET")
 	if s == "" {
-		return "quantiq-default-secret-change-in-prod"
+		log.Fatal("FATAL: JWT_SECRET environment variable is not set. Refusing to start.")
 	}
-	return s
+	jwtSecret = []byte(s)
 }
 
 type Claims struct {
@@ -36,24 +38,40 @@ func handleRegister(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 		return
 	}
+
 	var userID int
-	err = DB.QueryRow(`INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id`, req.Email, string(hash)).Scan(&userID)
+	err = DB.QueryRow(
+		`INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id`,
+		req.Email, string(hash),
+	).Scan(&userID)
 	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
+			return
+		}
+		log.Printf("ERROR: register DB insert failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Registration failed"})
 		return
 	}
+
 	token, err := generateToken(userID, req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": token, "email": req.Email, "user_id": userID})
+
+	c.JSON(http.StatusCreated, gin.H{"token": token, "email": req.Email, "user_id": userID})
 }
+
+// dummyHash is used to normalize bcrypt timing when user is not found,
+// preventing timing-based email enumeration attacks.
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-timing-prevention"), bcrypt.DefaultCost)
 
 func handleLogin(c *gin.Context) {
 	var req struct {
@@ -64,22 +82,33 @@ func handleLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
 	var userID int
 	var hash string
-	err := DB.QueryRow(`SELECT id, password FROM users WHERE email = $1`, req.Email).Scan(&userID, &hash)
+	userFound := true
+
+	err := DB.QueryRow(
+		`SELECT id, password FROM users WHERE email = $1`, req.Email,
+	).Scan(&userID, &hash)
 	if err != nil {
+		userFound = false
+		hash = string(dummyHash) // always run bcrypt to prevent timing attack
+	}
+
+	// Always run bcrypt regardless of whether user was found
+	bcryptErr := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password))
+
+	if !userFound || bcryptErr != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 		return
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
-		return
-	}
+
 	token, err := generateToken(userID, req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
+
 	c.JSON(http.StatusOK, gin.H{"token": token, "email": req.Email, "user_id": userID})
 }
 
@@ -99,18 +128,26 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if header == "" || !strings.HasPrefix(header, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing or malformed token"})
 			return
 		}
+
 		tokenStr := strings.TrimPrefix(header, "Bearer ")
 		claims := &Claims{}
+
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+			// Explicitly validate signing method to prevent "alg:none" attacks
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
 			return jwtSecret, nil
 		})
+
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			return
 		}
+
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
 		c.Next()
