@@ -305,23 +305,34 @@ func startAlertPoller() {
 	}()
 }
 
+// ── CORS origin checker ────────────────────────────────
+
+func isAllowedOrigin(origin string) bool {
+	// Always allow localhost for development
+	if origin == "http://localhost:3000" || origin == "http://localhost:5173" {
+		return true
+	}
+	// Allow all Vercel preview and production deployments for this project
+	if strings.HasSuffix(origin, ".vercel.app") {
+		return true
+	}
+	// Allow explicit production origin from env
+	if prod := os.Getenv("ALLOWED_ORIGIN"); prod != "" && origin == prod {
+		return true
+	}
+	return false
+}
+
 // ── Main ───────────────────────────────────────────────
 
 func main() {
-	// Must be first — JWT secret required before any auth route fires
 	initJWTSecret()
 	InitDB()
 
 	r := gin.Default()
 
-	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
-	if allowedOrigin == "" {
-		allowedOrigin = "https://quantiq-frontend.vercel.app"
-	}
-	allowedOrigins := []string{allowedOrigin, "http://localhost:3000", "http://localhost:5173"}
-
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     allowedOrigins,
+		AllowOriginFunc:  isAllowedOrigin,
 		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,
