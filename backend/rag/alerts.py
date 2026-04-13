@@ -1,19 +1,15 @@
+import uuid
 import yfinance as yf
 from datetime import datetime
 
 # In-memory store: { session_id: [ {id, ticker, threshold, direction, created_at, triggered} ] }
 _alerts: dict[str, list] = {}
-_id_counter = 0
 
-def _next_id():
-    global _id_counter
-    _id_counter += 1
-    return _id_counter
 
 def create_alert(session_id: str, ticker: str, threshold: float, direction: str) -> dict:
     """direction: 'above' or 'below'"""
     alert = {
-        "id": _next_id(),
+        "id": str(uuid.uuid4()),
         "ticker": ticker.upper(),
         "threshold": threshold,
         "direction": direction,
@@ -23,14 +19,17 @@ def create_alert(session_id: str, ticker: str, threshold: float, direction: str)
     _alerts.setdefault(session_id, []).append(alert)
     return alert
 
+
 def get_alerts(session_id: str) -> list:
     return _alerts.get(session_id, [])
 
-def delete_alert(session_id: str, alert_id: int) -> bool:
+
+def delete_alert(session_id: str, alert_id: str) -> bool:
     alerts = _alerts.get(session_id, [])
     before = len(alerts)
     _alerts[session_id] = [a for a in alerts if a["id"] != alert_id]
     return len(_alerts[session_id]) < before
+
 
 def check_alerts(session_id: str) -> list:
     """Returns list of newly triggered alerts."""

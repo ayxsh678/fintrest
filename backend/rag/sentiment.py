@@ -1,13 +1,12 @@
 import os
+import json
 import requests
 from datetime import datetime, timedelta
 
-# VADER is part of nltk — install with: pip install nltk vaderSentiment
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 
-_analyzer = SentimentIntensityAnalyzer()
-
-# Simple in-memory cache: { ticker: { score, label, headlines, cached_at } }
+# In-memory cache: { ticker: { ...result, cached_at } }
 _cache: dict[str, dict] = {}
 _CACHE_TTL_MINUTES = 30
 
@@ -22,28 +21,28 @@ def _is_cached(ticker: str) -> bool:
 
 def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
     """Fetch recent headlines from NewsAPI for a given ticker."""
-    api_key = os.getenv("NEWSAPI_KEY", "")
+    api_key = os.getenv("NEWS_API_KEY", "")
     if not api_key:
         return []
 
-    query = f"{ticker} stock" if not company_name else f"{company_name} OR {ticker} stock"
+    query     = f"{company_name} OR {ticker} stock" if company_name else f"{ticker} stock"
     from_date = (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d")
 
     try:
         resp = requests.get(
             "https://newsapi.org/v2/everything",
             params={
-                "q": query,
-                "from": from_date,
-                "sortBy": "publishedAt",
+                "q":        query,
+                "from":     from_date,
+                "sortBy":   "publishedAt",
                 "language": "en",
                 "pageSize": 20,
-                "apiKey": api_key,
+                "apiKey":   api_key,
             },
             timeout=8,
         )
         resp.raise_for_status()
-        articles = resp.json().get("articles", [])
+        articles  = resp.json().get("articles", [])
         headlines = []
         for a in articles:
             title = (a.get("title") or "").strip()
@@ -55,39 +54,72 @@ def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
         return []
 
 
-def _score_headlines(headlines: list[str]) -> tuple[float, str]:
+def _score_with_groq(ticker: str, headlines: list[str]) -> tuple[float, str]:
     """
-    Run VADER on each headline, average the compound scores.
-    Returns (score_0_to_100, label).
+    Ask Groq to score the sentiment of financial headlines.
+    Returns (score 0-100, label).
+    Falls back to Neutral (50) on any error.
     """
     if not headlines:
         return 50.0, "Neutral"
 
-    compounds = [_analyzer.polarity_scores(h)["compound"] for h in headlines]
-    avg = sum(compounds) / len(compounds)
+    if not GROQ_API_KEY:
+        return 50.0, "Neutral"
 
-    # Normalize compound (-1..1) → (0..100)
-    score = round((avg + 1) / 2 * 100, 1)
+    headlines_text = "\n".join(f"- {h}" for h in headlines[:15])
 
-    if score >= 62:
-        label = "Bullish"
-    elif score <= 38:
-        label = "Bearish"
-    else:
-        label = "Neutral"
+    prompt = f"""You are a financial sentiment analyst. Analyze the following news headlines about {ticker} and return a JSON object with exactly these fields:
+- "score": a number from 0 to 100 (0 = extremely bearish, 50 = neutral, 100 = extremely bullish)
+- "label": one of "Bearish", "Neutral", or "Bullish"
+- "reason": one sentence explaining the dominant sentiment signal
 
-    return score, label
+Headlines:
+{headlines_text}
+
+Respond ONLY with the JSON object. No markdown, no explanation outside the JSON."""
+
+    try:
+        resp = requests.post(
+            GROQ_URL,
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type":  "application/json",
+            },
+            json={
+                "model":       "llama-3.3-70b-versatile",
+                "messages":    [{"role": "user", "content": prompt}],
+                "max_tokens":  120,
+                "temperature": 0.1,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        raw  = resp.json()["choices"][0]["message"]["content"].strip()
+        raw  = raw.replace("```json", "").replace("```", "").strip()
+        data = json.loads(raw)
+
+        score = float(data.get("score", 50))
+        score = max(0.0, min(100.0, round(score, 1)))
+
+        label = data.get("label", "Neutral")
+        if label not in ("Bearish", "Neutral", "Bullish"):
+            label = "Bullish" if score >= 62 else ("Bearish" if score <= 38 else "Neutral")
+
+        return score, label
+
+    except Exception:
+        return 50.0, "Neutral"
 
 
 def get_sentiment(ticker: str, company_name: str = "") -> dict:
     """
     Returns:
     {
-        ticker: str,
-        score: float,        # 0–100
-        label: str,          # Bearish | Neutral | Bullish
-        headline_count: int,
-        headlines: list[str] # top 5 headlines used
+        ticker:          str,
+        score:           float,       # 0-100
+        label:           str,         # Bearish | Neutral | Bullish
+        headline_count:  int,
+        headlines:       list[str]    # top 5 headlines used
     }
     """
     ticker = ticker.upper().strip()
@@ -97,15 +129,15 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
         entry.pop("cached_at", None)
         return entry
 
-    headlines = _fetch_headlines(ticker, company_name)
-    score, label = _score_headlines(headlines)
+    headlines    = _fetch_headlines(ticker, company_name)
+    score, label = _score_with_groq(ticker, headlines)
 
     result = {
-        "ticker": ticker,
-        "score": score,
-        "label": label,
+        "ticker":         ticker,
+        "score":          score,
+        "label":          label,
         "headline_count": len(headlines),
-        "headlines": headlines[:5],
+        "headlines":      headlines[:5],
     }
 
     _cache[ticker] = {**result, "cached_at": datetime.utcnow()}

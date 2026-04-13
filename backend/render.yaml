@@ -12,6 +12,12 @@ services:
         sync: false
       - key: ALPHA_VANTAGE_KEY
         sync: false
+      - key: OPEN_EXCHANGE_RATES_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
 
   - type: web
     name: quantiq-go
@@ -22,5 +28,7 @@ services:
     envVars:
       - key: PYTHON_SERVICE_URL
         value: https://finance-ai-bt9x.onrender.com
+      - key: ALLOWED_ORIGIN
+        sync: false
       - key: PORT
         value: "8000"

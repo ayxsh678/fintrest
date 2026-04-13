@@ -291,11 +291,12 @@ func main() {
 
 	allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
 	if allowedOrigin == "" {
-		allowedOrigin = "http://localhost:5173"
+		allowedOrigin = "https://quantiq-frontend.vercel.app" // update to your actual Vercel URL
 	}
+	allowedOrigins := []string{allowedOrigin, "http://localhost:3000", "http://localhost:5173"}
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{allowedOrigin, "http://localhost:3000"},
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		AllowCredentials: true,

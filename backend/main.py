@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from rag.retriever import build_context, get_stock_data
+from rag.retriever import build_context, get_stock_data, get_financial_news
 from rag.portfolio import build_portfolio_context, extract_tickers_from_query, get_portfolio_data
 from rag.comparison import build_comparison_context, extract_comparison_tickers, get_comparison_data
 from rag.memory import create_session, get_history, append_to_history, clear_session
@@ -16,6 +17,15 @@ import os
 import uvicorn
 
 app = FastAPI(title="Quantiq - Python Service")
+
+# ── CORS ────────────────────────────────────────────────
+_allowed_origin = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[_allowed_origin, "http://localhost:3000", "http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ── Models ─────────────────────────────────────────────
@@ -71,7 +81,7 @@ class AlertGetRequest(BaseModel):
 
 class AlertDeleteRequest(BaseModel):
     session_id: str
-    alert_id: int
+    alert_id: str
 
 class AlertCheckRequest(BaseModel):
     session_id: str
@@ -387,7 +397,6 @@ def route_check_alerts(req: AlertCheckRequest):
 
 def get_financial_news_for_forex(pair: str) -> str:
     """Fetch news relevant to a forex pair for LLM context."""
-    from rag.retriever import get_financial_news
     query = pair.replace("/", " ")
     return get_financial_news(query, time_range="7d")
 
