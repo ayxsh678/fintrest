@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -27,12 +28,36 @@ func InitDB() {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
 
-	DB.SetMaxOpenConns(25)
-	DB.SetMaxIdleConns(5)
-	DB.SetConnMaxLifetime(5 * time.Minute)
+	DB.SetMaxOpenConns(getEnvInt("DB_MAX_OPEN_CONNS", 25))
+	DB.SetMaxIdleConns(getEnvInt("DB_MAX_IDLE_CONNS", 5))
+	DB.SetConnMaxLifetime(getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute))
 
 	createTables()
 	log.Println("✅ Database connected")
+}
+
+func getEnvInt(key string, defaultVal int) int {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultVal
+	}
+	val, err := strconv.Atoi(valStr)
+	if err != nil || val < 0 {
+		return defaultVal
+	}
+	return val
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultVal
+	}
+	d, err := time.ParseDuration(valStr)
+	if err != nil || d < 0 {
+		return defaultVal
+	}
+	return d
 }
 
 func createTables() {

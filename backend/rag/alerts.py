@@ -1,5 +1,7 @@
-import uuid
 import logging
+import uuid
+
+import requests
 import yfinance as yf
 from datetime import datetime
 
@@ -49,7 +51,11 @@ def check_alerts(session_id: str) -> list:
                 alert["triggered_price"] = round(price, 2)
                 alert["triggered_at"] = datetime.utcnow().isoformat()
                 triggered.append(alert)
-        except Exception as e:
-            logger.warning("Failed to check price for alert %s (%s): %s",
-                           alert["id"], alert["ticker"], e)
+        except (requests.RequestException, KeyError, OSError) as e:
+            logger.warning(
+                "Failed to check price for alert %s (%s): %s",
+                alert.get("id"),
+                alert.get("ticker"),
+                e,
+            )
     return triggered

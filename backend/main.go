@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/smtp"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -244,6 +246,13 @@ func sendAlertEmail(alert map[string]interface{}) {
 		smtpPort = "587"
 	}
 
+	smtpPortInt, err := strconv.Atoi(smtpPort)
+	if err != nil || smtpPortInt <= 0 {
+		log.Printf("[alert] Invalid SMTP_PORT %q — skipping alert for %v: %v", smtpPort, alert["ticker"], err)
+		return
+	}
+	smtpAddr := net.JoinHostPort(smtpHost, strconv.Itoa(smtpPortInt))
+
 	ticker         := fmt.Sprintf("%v", alert["ticker"])
 	triggeredPrice := fmt.Sprintf("%v", alert["triggered_price"])
 	threshold      := fmt.Sprintf("%v", alert["threshold"])
@@ -262,7 +271,7 @@ func sendAlertEmail(alert map[string]interface{}) {
 	msg  := fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", alertEmail, subject, body)
 	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 
-	if err := smtp.SendMail(smtpHost+":"+smtpPort, auth, smtpUser,
+	if err := smtp.SendMail(smtpAddr, auth, smtpUser,
 		[]string{alertEmail}, []byte(msg)); err != nil {
 		log.Printf("[alert] Failed to send email for %s: %v", ticker, err)
 	} else {
