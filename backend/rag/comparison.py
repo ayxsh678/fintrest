@@ -40,12 +40,22 @@ def build_comparison_context(ticker_a: str, ticker_b: str) -> str:
 def extract_comparison_tickers(query: str) -> tuple[str, str] | None:
     query_lower = query.lower()
     found = []
+
+    # 1. Match company names (e.g. "reliance", "apple")
     for name, ticker in COMPANY_MAP.items():
         if name in query_lower and ticker not in found:
             found.append(ticker)
+
+    # 2. Match raw words — preserve .NS / .BO suffixes for Indian tickers
     if len(found) < 2:
         for word in query.upper().split():
-            clean = re.sub(r"[^A-Z]", "", word)
-            if clean in KNOWN_TICKERS and clean not in found:
+            # Allow letters, digits, dots (for .NS/.BO)
+            clean = re.sub(r"[^A-Z0-9.]", "", word).strip(".")
+            if not clean:
+                continue
+            # Accept known plain tickers OR anything ending in .NS / .BO
+            if (clean in KNOWN_TICKERS or clean.endswith(".NS") or clean.endswith(".BO")) \
+                    and clean not in found:
                 found.append(clean)
+
     return tuple(found[:2]) if len(found) >= 2 else None
