@@ -3,8 +3,12 @@ uvicorn
 python-dotenv
 requests
 yfinance
+faiss-cpu
+sentence-transformers
+transformers
+peft
+torch
+accelerate
+bitsandbytes
 newsapi-python
-cachetools
-feedparser
-redis
-pycoingecko
+vaderSentiment

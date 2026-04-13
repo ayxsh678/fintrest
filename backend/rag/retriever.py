@@ -1,3 +1,4 @@
+import time
 import os
 import re
 import requests
@@ -118,10 +119,12 @@ def get_stock_data(ticker: str) -> str:
     with stock_lock:
         if ticker in stock_cache:
             return stock_cache[ticker]
-
     try:
-        stock    = yf.Ticker(ticker)
-        info     = stock.info
+        time.sleep(0.5)  # prevent Yahoo Finance rate limiting
+        stock = yf.Ticker(ticker)
+
+        # fast_info is lighter and less rate-limited than stock.info
+        fi   = stock.fast_info
         hist     = stock.history(period="5d")
         hist_30d = stock.history(period="30d")
 
@@ -132,7 +135,6 @@ def get_stock_data(ticker: str) -> str:
             (hist["Close"].iloc[-1] - hist["Close"].iloc[0])
             / hist["Close"].iloc[0] * 100
         )
-
         avg_volume_30d = hist_30d["Volume"].mean() if not hist_30d.empty else 0
         latest_volume  = hist["Volume"].iloc[-1]
         rel_volume = (
@@ -140,21 +142,41 @@ def get_stock_data(ticker: str) -> str:
             if avg_volume_30d > 0 else "N/A"
         )
 
+        # fast_info doesn't have longName — fall back to ticker
+        try:
+            long_name = stock.info.get("longName", ticker)
+        except Exception:
+            long_name = ticker
+
+        price      = fi.last_price      or "N/A"
+        prev_close = fi.previous_close  or "N/A"
+        week_high  = fi.fifty_two_week_high or "N/A"
+        week_low   = fi.fifty_two_week_low  or "N/A"
+        market_cap = fi.market_cap      or 0
+
+        # PE and EPS not in fast_info — attempt quietly, skip if rate limited
+        try:
+            info = stock.info
+            pe   = info.get("trailingPE",  "N/A")
+            eps  = info.get("trailingEps", "N/A")
+        except Exception:
+            pe  = "N/A"
+            eps = "N/A"
+
         result = (
-            f"Stock: {info.get('longName', ticker)} ({ticker})\n"
-            f"Current Price: ${info.get('currentPrice', 'N/A')}\n"
-            f"Previous Close: ${info.get('previousClose', 'N/A')}\n"
-            f"52W High: ${info.get('fiftyTwoWeekHigh', 'N/A')}\n"
-            f"52W Low: ${info.get('fiftyTwoWeekLow', 'N/A')}\n"
-            f"P/E Ratio: {info.get('trailingPE', 'N/A')}\n"
-            f"Market Cap: ${info.get('marketCap', 0):,}\n"
-            f"EPS: {info.get('trailingEps', 'N/A')}\n"
+            f"Stock: {long_name} ({ticker})\n"
+            f"Current Price: ${price}\n"
+            f"Previous Close: ${prev_close}\n"
+            f"52W High: ${week_high}\n"
+            f"52W Low: ${week_low}\n"
+            f"P/E Ratio: {pe}\n"
+            f"Market Cap: ${market_cap:,}\n"
+            f"EPS: {eps}\n"
             f"5-Day Change: {change_pct:.2f}%\n"
             f"Latest Volume: {int(latest_volume):,}\n"
             f"30D Avg Volume: {int(avg_volume_30d):,}\n"
             f"Relative Volume: {rel_volume}"
         )
-
     except Exception as e:
         result = f"Stock data unavailable: {str(e)}"
 
@@ -162,11 +184,10 @@ def get_stock_data(ticker: str) -> str:
         stock_cache[ticker] = result
     return result
 
-
 # ── NewsAPI ────────────────────────────────────────────
 
 def get_financial_news(query: str, ticker: str = None,
-                       time_range: str = "7d") -> str:
+                        time_range: str = "7d") -> str:
     cache_key = f"{ticker or query}_{time_range}"
     with news_lock:
         if cache_key in news_cache:
