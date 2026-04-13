@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, CartesianGrid
 } from "recharts";
 
-const API_URL = "https://quantiq-go.onrender.com";
+const API_URL = process.env.REACT_APP_API_URL || "https://quantiq-go.onrender.com";
 
 // ── Auth helpers ────────────────────────────────────────
 const getToken    = () => localStorage.getItem("fintrest_token");
