@@ -1,16 +1,9 @@
+# Root-level requirements (legacy / local dev only).
+# The actual production service uses backend/requirements.txt.
 fastapi
 uvicorn
 python-dotenv
 requests
 yfinance
-faiss-cpu
-sentence-transformers
-transformers
-peft
-torch
-accelerate
-bitsandbytes
 newsapi-python
-vaderSentiment
 pycoingecko
-# force rebuild
