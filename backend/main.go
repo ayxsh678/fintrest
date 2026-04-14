@@ -246,13 +246,17 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("proxyJSON upstream error [%s %s]: status %d", method, path, resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
+		// Cap body reads to 4 KB — enough for any error payload, avoids buffering large bodies.
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if readErr != nil {
+			return nil, fmt.Errorf("proxyJSON client error [%s %s]: status %d (read body failed: %w)", method, path, resp.StatusCode, readErr)
+		}
 		var clientErr interface{}
-		if err := json.Unmarshal(body, &clientErr); err == nil {
+		if err := json.Unmarshal(respBody, &clientErr); err == nil {
 			return clientErr, nil
 		}
-		// Non-JSON body — include a truncated snippet so the error is actionable
-		snippet := string(body)
+		// Non-JSON body — include a truncated snippet so the error is actionable.
+		snippet := string(respBody)
 		if len(snippet) > 200 {
 			snippet = snippet[:200] + "…"
 		}
