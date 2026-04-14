@@ -20,6 +20,7 @@ from threading import Lock
 from rag.crypto import get_coin_id, get_crypto_data, get_crypto_news, KNOWN_COINS
 from rag.india_stocks import extract_india_ticker, get_india_stock_data, INDIA_COMPANY_MAP
 from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot
+from rag.alpha_vantage import get_quote as av_get_quote, format_as_stock_data as av_format
 
 NEWS_API_KEY     = os.getenv("NEWS_API_KEY")
 TAKETODAY_FEED   = "https://taketoday.co/feed"
@@ -200,7 +201,11 @@ def get_stock_data(ticker: str) -> str:
             f"Relative Volume: {rel_volume}"
         )
     except Exception as e:
-        result = f"Stock data unavailable: {str(e)}"
+        av_quote = av_get_quote(ticker)
+        if av_quote:
+            result = av_format(ticker, av_quote, symbol="$")
+        else:
+            result = f"Stock data unavailable: {str(e)}"
 
     with stock_lock:
         stock_cache[ticker] = result
