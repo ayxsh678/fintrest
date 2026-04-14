@@ -39,7 +39,10 @@ type QueryResponse struct {
 
 // ── Active session tracking ────────────────────────────
 
-const sessionTTL = 24 * time.Hour
+const (
+	sessionTTL        = 24 * time.Hour
+	maxErrorBodyBytes = 4096 // max bytes read from an error response body to build a diagnostic snippet
+)
 
 var (
 	activeSessions   = make(map[string]time.Time)
@@ -246,10 +249,10 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("proxyJSON upstream error [%s %s]: status %d", method, path, resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 {
-		// Cap body reads to 4 KB — enough for any error payload, avoids buffering large bodies.
-		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		// Cap body reads to maxErrorBodyBytes — enough for any error payload, avoids buffering large bodies.
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		if readErr != nil {
-			return nil, fmt.Errorf("proxyJSON client error [%s %s]: status %d (read body failed: %w)", method, path, resp.StatusCode, readErr)
+			return nil, fmt.Errorf("proxyJSON error [%s %s]: status %d (read body failed: %w)", method, path, resp.StatusCode, readErr)
 		}
 		var clientErr interface{}
 		if err := json.Unmarshal(respBody, &clientErr); err == nil {
@@ -260,7 +263,7 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 		if len(snippet) > 200 {
 			snippet = snippet[:200] + "…"
 		}
-		return nil, fmt.Errorf("proxyJSON client error [%s %s]: status %d: %s", method, path, resp.StatusCode, snippet)
+		return nil, fmt.Errorf("proxyJSON error [%s %s]: status %d: %s", method, path, resp.StatusCode, snippet)
 	}
 	var result interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
