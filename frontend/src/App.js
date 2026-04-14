@@ -824,6 +824,23 @@ export default function App() {
             style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
             {compareLoading ? "..." : "Compare"}
           </button>
+          <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 }}>Quick picks</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {[
+              { label: "Reliance vs TCS",     a: "RELIANCE.NS",  b: "TCS.NS" },
+              { label: "HDFC vs ICICI",       a: "HDFCBANK.NS",  b: "ICICIBANK.NS" },
+              { label: "Infosys vs Wipro",    a: "INFY.NS",      b: "WIPRO.NS" },
+              { label: "AAPL vs MSFT",        a: "AAPL",         b: "MSFT" },
+              { label: "NVDA vs AMD",         a: "NVDA",         b: "AMD" },
+              { label: "BTC vs ETH",          a: "BTC",          b: "ETH" },
+            ].map(pick => (
+              <button key={pick.label} disabled={compareLoading}
+                onClick={() => { setCompareA(pick.a); setCompareB(pick.b); runComparison(pick.a, pick.b); }}
+                style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 14, padding: "5px 10px", fontSize: 11, color: "#c9d1d9", cursor: compareLoading ? "wait" : "pointer" }}>
+                {pick.label}
+              </button>
+            ))}
+          </div>
           {compareData && !compareData.error && (
             <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />
           )}
