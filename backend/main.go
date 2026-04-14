@@ -372,6 +372,11 @@ func isAllowedOrigin(origin string) bool {
 	if origin == "http://localhost:3000" || origin == "http://localhost:5173" {
 		return true
 	}
+	// Allow all Vercel preview deploys for this project
+	if strings.HasSuffix(origin, "-ayxsh678s-projects.vercel.app") ||
+		origin == "https://finance-ai-8qu9.vercel.app" {
+		return true
+	}
 	// Allow explicit production origins from env (comma-separated allowlist)
 	if prod := os.Getenv("ALLOWED_ORIGIN"); prod != "" {
 		for _, allowed := range strings.Split(prod, ",") {

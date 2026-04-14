@@ -1,3 +1,6 @@
+
+Copy
+
 services:
   - type: web
     name: fintrest-python
@@ -16,9 +19,9 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
-      - key: ALLOWED_ORIGINS
+      - key: ALLOWED_ORIGIN
         sync: false
-
+ 
   - type: web
     name: fintrest-go
     runtime: go
@@ -28,7 +31,8 @@ services:
     envVars:
       - key: PYTHON_SERVICE_URL
         value: https://finance-ai-bt9x.onrender.com
-      - key: ALLOWED_ORIGINS
+      - key: ALLOWED_ORIGIN
         sync: false
       - key: PORT
         value: "8000"
+ 
