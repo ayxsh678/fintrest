@@ -67,13 +67,17 @@ func getActiveSessions() []string {
 	activeSessionsMu.Lock()
 	defer activeSessionsMu.Unlock()
 	now := time.Now()
+	var expired []string
 	ids := make([]string, 0, len(activeSessions))
 	for id, lastSeen := range activeSessions {
 		if now.Sub(lastSeen) > sessionTTL {
-			delete(activeSessions, id)
+			expired = append(expired, id)
 			continue
 		}
 		ids = append(ids, id)
+	}
+	for _, id := range expired {
+		delete(activeSessions, id)
 	}
 	return ids
 }
