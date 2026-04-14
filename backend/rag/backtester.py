@@ -42,16 +42,16 @@ class SentimentBacktester:
 
             logger.info("Running backtest with %d trading days...", len(close_prices))
 
+            # Fetch sentiment once — cached inside get_sentiment; calling it per-day is wasteful
+            sent_result = get_sentiment(ticker)
+            sentiment_score = sent_result.get("score", 50.0)
+
             for i in range(20, len(close_prices)):
                 current_date = close_prices.index[i].date()
-                
+
                 # Ultra-safe price extraction
                 price_value = close_prices.iloc[i]
                 current_price = float(price_value.item() if hasattr(price_value, 'item') else price_value)
-
-                # Get sentiment (using your current sentiment.py)
-                sent_result = get_sentiment(ticker)
-                sentiment_score = sent_result.get("score", 50.0)
 
                 if position == 0:
                     if sentiment_score >= self.buy_threshold:

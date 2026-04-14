@@ -169,7 +169,7 @@ function TradingViewChart({ ticker, height = 220 }) {
       DOGE: "BINANCE:DOGEUSDT",
     };
     if (map[t]) return map[t];
-    if (t.endsWith(".NS")) return "BSE:" + t.replace(".NS", "");
+    if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
     if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
     return t.includes(":") ? t : `NASDAQ:${t}`;
   };
@@ -277,7 +277,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>
-            {stock.price >= 1000 ? `$${stock.price.toLocaleString()}` : `$${stock.price ?? "—"}`}
+            {stock.price == null ? "—" : stock.type === "India" ? `₹${stock.price.toLocaleString()}` : stock.type === "Crypto" ? `$${stock.price.toLocaleString()}` : `$${stock.price.toLocaleString()}`}
           </div>
           <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>
             {isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}%
@@ -460,6 +460,7 @@ export default function App() {
 
   const [sentiments, setSentiments]             = useState({});
   const [sentimentLoading, setSentimentLoading] = useState({});
+  const fetchedSentiments                       = useRef(new Set());
 
   const bottomRef = useRef(null);
 
@@ -495,15 +496,19 @@ export default function App() {
   }, []);
 
   const fetchSentiment = useCallback(async (ticker, name = "") => {
-    if (sentiments[ticker] !== undefined) return;
+    if (fetchedSentiments.current.has(ticker)) return;
+    fetchedSentiments.current.add(ticker);
     setSentimentLoading(prev => ({ ...prev, [ticker]: true }));
     try {
       const res  = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
       const data = await res.json();
       setSentiments(prev => ({ ...prev, [ticker]: data }));
-    } catch { setSentiments(prev => ({ ...prev, [ticker]: null })); }
+    } catch {
+      fetchedSentiments.current.delete(ticker); // allow retry on error
+      setSentiments(prev => ({ ...prev, [ticker]: null }));
+    }
     setSentimentLoading(prev => ({ ...prev, [ticker]: false }));
-  }, [sentiments]);
+  }, []);
 
   useEffect(() => { watchlist.forEach(s => fetchSentiment(s.ticker, s.name)); }, [watchlist, fetchSentiment]);
   useEffect(() => { fetchSentiment(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker, fetchSentiment]);

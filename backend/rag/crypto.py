@@ -78,15 +78,31 @@ def get_crypto_data(coin_id: str) -> str:
         ath        = m.get("ath", {}).get("usd", "N/A")
         rank       = d.get("market_cap_rank", "N/A")
 
+        def fmt_num(v, prefix=""):
+            if v == "N/A" or v is None:
+                return "N/A"
+            try:
+                return f"{prefix}{v:,}"
+            except (ValueError, TypeError):
+                return str(v)
+
+        def fmt_pct(v):
+            if v == "N/A" or v is None:
+                return "N/A"
+            try:
+                return f"{float(v):.2f}%"
+            except (ValueError, TypeError):
+                return str(v)
+
         result = (
             f"Crypto: {d.get('name', coin_id)} ({d.get('symbol', '').upper()})\n"
-            f"Price (USD): ${price_usd:,}\n"
-            f"Price (INR): ₹{price_inr:,}\n"
-            f"24h Change: {change_24h:.2f}%\n"
-            f"7d Change: {change_7d:.2f}%\n"
-            f"24h High: ${high_24h:,}\n"
-            f"24h Low: ${low_24h:,}\n"
-            f"All-Time High: ${ath:,}\n"
+            f"Price (USD): {fmt_num(price_usd, '$')}\n"
+            f"Price (INR): {fmt_num(price_inr, '₹')}\n"
+            f"24h Change: {fmt_pct(change_24h)}\n"
+            f"7d Change: {fmt_pct(change_7d)}\n"
+            f"24h High: {fmt_num(high_24h, '$')}\n"
+            f"24h Low: {fmt_num(low_24h, '$')}\n"
+            f"All-Time High: {fmt_num(ath, '$')}\n"
             f"Market Cap: ${market_cap:,}\n"
             f"24h Volume: ${volume_24h:,}\n"
             f"Market Cap Rank: #{rank}"

@@ -34,6 +34,11 @@ class ContextRequest(BaseModel):
     question: str
     time_range: str = "7d"
 
+class AskRequest(BaseModel):
+    question: str
+    time_range: str = "7d"
+    session_id: str | None = None
+
 class GenerateRequest(BaseModel):
     question: str
     context: str
@@ -185,6 +190,25 @@ def get_response(req: GenerateRequest):
     session_id = req.session_id or create_session()
     history    = get_history(session_id)
     answer     = generate_response(req.question, req.context, history=history)
+    append_to_history(session_id, req.question, answer)
+
+    return GenerateResponse(answer=answer, session_id=session_id)
+
+
+# ── Ask (context + generate in one shot) ──────────────
+
+@app.post("/ask", response_model=GenerateResponse)
+def ask(req: AskRequest):
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    valid_ranges = {"24h", "3d", "7d", "30d", "1y"}
+    time_range = req.time_range if req.time_range in valid_ranges else "7d"
+
+    session_id = req.session_id or create_session()
+    history    = get_history(session_id)
+    context    = build_context(req.question, time_range)
+    answer     = generate_response(req.question, context, history=history)
     append_to_history(session_id, req.question, answer)
 
     return GenerateResponse(answer=answer, session_id=session_id)
