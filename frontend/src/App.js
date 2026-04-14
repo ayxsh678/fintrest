@@ -583,27 +583,49 @@ export default function App() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   useEffect(() => {
+    const sid = getSessionId();
+    if (!sid) return;
+    (async () => {
+      try {
+        const res  = await fetch(`${API_URL}/session/${sid}/history`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const hist = (data.messages || []).map(m => ({
+          role: m.role, content: m.content, sources: []
+        }));
+        if (hist.length) setMessages([{ role: "assistant", content: "Welcome back. Resuming your previous conversation.", sources: [] }, ...hist]);
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
     const fetchPrices = async () => {
-      const updated = await Promise.all(
-        WATCHLIST_DEFAULT.map(async (stock) => {
-          try {
-            const res  = await fetch(`${API_URL}/stock/${stock.ticker}`);
-            if (!res.ok) return stock;
-            const json = await res.json();
-            const raw  = typeof json.data === "string" ? json.data : "";
-            const priceMatch = raw.match(/Current Price:\s*\$?([\d,.]+)/);
-            const prevMatch  = raw.match(/Previous Close:\s*\$?([\d,.]+)/);
-            const price  = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, "")) : null;
-            const prev   = prevMatch  ? parseFloat(prevMatch[1].replace(/,/g, "")) : null;
-            const change = (price !== null && prev !== null && prev !== 0)
-              ? parseFloat(((price - prev) / prev * 100).toFixed(2))
-              : null;
-            return { ...stock, price, change, base: price ?? stock.base };
-          } catch { return stock; }
-        })
-      );
-      setWatchlist(updated);
-      setSelectedStock(prev => updated.find(s => s.ticker === prev.ticker) ?? prev);
+      try {
+        const res = await fetch(`${API_URL}/watchlist/enrich`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tickers: WATCHLIST_DEFAULT.map(s => s.ticker) }),
+        });
+        if (!res.ok) return;
+        const { items } = await res.json();
+        const byTicker = Object.fromEntries(items.map(i => [i.ticker, i]));
+        const updated = WATCHLIST_DEFAULT.map(stock => {
+          const live = byTicker[stock.ticker];
+          if (!live || live.price == null) return stock;
+          return { ...stock, price: live.price, change: live.change_5d_pct ?? 0, base: live.price };
+        });
+        setWatchlist(updated);
+        setSelectedStock(prev => updated.find(s => s.ticker === prev.ticker) ?? prev);
+        items.forEach(i => {
+          if (i.sentiment_score != null) {
+            fetchedSentiments.current.add(i.ticker);
+            setSentiments(prev => ({
+              ...prev,
+              [i.ticker]: { ticker: i.ticker, score: i.sentiment_score, label: i.sentiment_label, headline_count: 0, headlines: [] },
+            }));
+          }
+        });
+      } catch {}
     };
     fetchPrices();
     const interval = setInterval(fetchPrices, 60_000);

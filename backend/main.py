@@ -5,6 +5,7 @@ from rag.retriever import build_context, get_stock_data, get_financial_news
 from rag.portfolio import build_portfolio_context, extract_tickers_from_query, get_portfolio_data
 from rag.comparison import build_comparison_context, extract_comparison_tickers, get_comparison_data
 from rag.memory import create_session, get_history, append_to_history, clear_session
+from rag.watchlist_enrich import enrich_watchlist
 from rag.alerts import create_alert, get_alerts, delete_alert, check_alerts
 from rag.sentiment import get_sentiment, get_news_impact
 from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot, CURRENCY_PAIRS
@@ -172,6 +173,25 @@ def new_session():
 def delete_session(session_id: str):
     clear_session(session_id)
     return SessionResponse(session_id=session_id, cleared=True)
+
+
+@app.get("/session/{session_id}/history")
+def session_history(session_id: str):
+    """Return the session's conversation history as a list of {role, content}."""
+    return {"session_id": session_id, "messages": get_history(session_id)}
+
+
+class WatchlistEnrichRequest(BaseModel):
+    tickers: list[str]
+
+@app.post("/watchlist/enrich")
+def watchlist_enrich(req: WatchlistEnrichRequest):
+    tickers = [t.upper().strip() for t in req.tickers if t.strip()]
+    if not tickers:
+        raise HTTPException(status_code=400, detail="No tickers provided")
+    if len(tickers) > 30:
+        raise HTTPException(status_code=400, detail="Maximum 30 tickers")
+    return {"items": enrich_watchlist(tickers)}
 
 
 # ── Context ────────────────────────────────────────────
