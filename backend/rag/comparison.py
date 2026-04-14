@@ -8,6 +8,10 @@ try:
 except ImportError:
     COMPANY_MAP = {}
     KNOWN_TICKERS = []
+try:
+    from rag.india_stocks import INDIA_COMPANY_MAP
+except ImportError:
+    INDIA_COMPANY_MAP = {}
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +48,8 @@ def extract_comparison_tickers(query: str) -> tuple[str, str] | None:
     query_lower = query.lower()
     found = []
 
-    # 1. Match company names (e.g. "reliance", "apple")
-    for name, ticker in COMPANY_MAP.items():
+    # 1. Match company names — check both US and India maps
+    for name, ticker in {**COMPANY_MAP, **INDIA_COMPANY_MAP}.items():
         if name in query_lower and ticker not in found:
             found.append(ticker)
 
