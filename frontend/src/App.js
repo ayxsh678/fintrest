@@ -231,8 +231,21 @@ function TradingViewChart({ ticker, height = 220 }) {
   );
 }
 
+// ── Metric explanations (tap-to-explain) ────────────────
+const METRIC_EXPLANATIONS = {
+  "Price":     { short: "What one share costs right now.", detail: "The last traded price. Goes up when more people want to buy; goes down when more people want to sell. By itself, price tells you nothing about whether a stock is cheap or expensive — compare with P/E and Market Cap." },
+  "5D Change": { short: "How much the price moved over the last 5 trading days.", detail: "Short-term momentum. Green = rising, red = falling. Useful to catch trends, but 5 days is noise for long-term investors. Don't buy or sell just because of a 5-day move." },
+  "Mkt Cap":   { short: "The total price tag of the whole company.", detail: "Market Cap = Share Price × Total Shares. Large cap (huge, stable), Mid cap (growing), Small cap (risky but high potential). A ₹100 share in a small company is very different from a ₹100 share in a giant." },
+  "P/E":       { short: "Is the stock expensive or cheap vs its earnings?", detail: "If P/E is 20, you pay ₹20 for every ₹1 the company earns per year. Lower can mean cheaper — but very low P/E sometimes signals trouble ahead. Typical healthy range: 10–25." },
+  "EPS":       { short: "How much profit the company makes per share.", detail: "Earnings Per Share = Net Profit ÷ Shares Outstanding. Rising EPS over time is a green flag. Compare EPS with the share price to understand P/E." },
+  "52W High":  { short: "The highest price this stock hit in the last year.", detail: "If the current price is close to the 52W high, momentum is strong — but the stock may be fully priced. Far below? Could be a bargain, or something is wrong — investigate why." },
+  "52W Low":   { short: "The lowest price this stock hit in the last year.", detail: "Shows how far the stock can fall. If the current price is near this level, be cautious and research what's dragging it down before buying." },
+  "Rel Vol":   { short: "Is trading unusually busy today?", detail: "Relative Volume compares today's volume to the average. >1.5 means unusual activity (news, earnings, rumors). <0.7 means a quiet day. High Rel Vol often precedes big moves." },
+};
+
 // ── Compare Table ───────────────────────────────────────
 function CompareTable({ data, ticker_a, ticker_b }) {
+  const [expanded, setExpanded] = useState(null);
   const parse = (s, f) => { const m = s?.match(new RegExp(`${f}: ([^\n]+)`)); return m ? m[1].trim() : "—"; };
   const sA = typeof data?.data_a?.stock === "string" ? data.data_a.stock : ""; const sB = typeof data?.data_b?.stock === "string" ? data.data_b.stock : "";
   const rows = [
@@ -254,14 +267,33 @@ function CompareTable({ data, ticker_a, ticker_b }) {
           <div key={t} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700 }}>{t}</div>
         ))}
       </div>
-      {rows.map((row, i) => (
-        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: i < rows.length - 1 ? "1px solid #21262d" : "none", background: i % 2 === 0 ? "#0d1117" : "#0a0f16" }}>
-          <div style={{ padding: "7px 10px", fontSize: 10, color: "#8b949e" }}>{row.label}</div>
-          {[row.a, row.b].map((val, j) => (
-            <div key={j} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3" }}>{val}</div>
-          ))}
-        </div>
-      ))}
+      {rows.map((row, i) => {
+        const isOpen = expanded === row.label;
+        const exp = METRIC_EXPLANATIONS[row.label];
+        return (
+          <div key={i} style={{ borderBottom: i < rows.length - 1 ? "1px solid #21262d" : "none" }}>
+            <div
+              onClick={() => setExpanded(isOpen ? null : row.label)}
+              title="Tap to explain"
+              style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: i % 2 === 0 ? "#0d1117" : "#0a0f16", cursor: exp ? "pointer" : "default" }}
+            >
+              <div style={{ padding: "7px 10px", fontSize: 10, color: isOpen ? "#f7c843" : "#8b949e", display: "flex", alignItems: "center", gap: 4 }}>
+                {row.label}
+                {exp && <span style={{ fontSize: 9, opacity: 0.6 }}>{isOpen ? "▾" : "ⓘ"}</span>}
+              </div>
+              {[row.a, row.b].map((val, j) => (
+                <div key={j} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3" }}>{val}</div>
+              ))}
+            </div>
+            {isOpen && exp && (
+              <div style={{ padding: "10px 14px", background: "#0a0f16", borderTop: "1px solid #21262d" }}>
+                <div style={{ fontSize: 12, color: "#f7c843", fontWeight: 600, marginBottom: 4 }}>{exp.short}</div>
+                <div style={{ fontSize: 11, color: "#c9d1d9", lineHeight: 1.55 }}>{exp.detail}</div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
