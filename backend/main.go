@@ -215,9 +215,10 @@ func detectSources(context string) []string {
 func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 	var req *http.Request
 	var err error
-	if method == "GET" {
+	switch method {
+	case "GET":
 		req, err = http.NewRequest("GET", pythonURL()+path, nil)
-	} else {
+	case "POST":
 		var payload []byte
 		payload, err = json.Marshal(body)
 		if err != nil {
@@ -227,6 +228,8 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
+	default:
+		return nil, fmt.Errorf("proxyJSON: unsupported method %q", method)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("proxyJSON build request error [%s %s]: %w", method, path, err)
@@ -254,7 +257,7 @@ func proxyGet(path string) (map[string]interface{}, error) {
 	if m, ok := raw.(map[string]interface{}); ok {
 		return m, nil
 	}
-	return nil, fmt.Errorf("proxyGet: unexpected response shape for %s", path)
+	return nil, fmt.Errorf("proxyGet: unexpected response shape for %s: got %T", path, raw)
 }
 
 func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
@@ -265,7 +268,7 @@ func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
 	if m, ok := raw.(map[string]interface{}); ok {
 		return m, nil
 	}
-	return nil, fmt.Errorf("proxyPost: unexpected response shape for %s", path)
+	return nil, fmt.Errorf("proxyPost: unexpected response shape for %s: got %T", path, raw)
 }
 
 func proxyPostSlice(path string, body interface{}) ([]interface{}, error) {
