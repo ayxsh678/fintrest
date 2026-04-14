@@ -367,8 +367,10 @@ function CompareTable({ data, ticker_a, ticker_b }) {
   );
 }
 
-const CustomTooltip = ({ active, payload }) => active && payload?.length
-  ? <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 8, padding: "8px 14px", fontSize: 13, color: "#e6edf3" }}>${payload[0].value.toLocaleString()}</div>
+const currencySymbol = type => type === "India" ? "₹" : "$";
+
+const CustomTooltip = ({ active, payload, symbol = "$" }) => active && payload?.length
+  ? <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 8, padding: "8px 14px", fontSize: 13, color: "#e6edf3" }}>{symbol}{payload[0].value.toLocaleString()}</div>
   : null;
 
 // ── Stock Card ──────────────────────────────────────────
@@ -429,7 +431,7 @@ function MainChart({ stock }) {
           <span style={{ fontSize: 12, color: "#8b949e" }}>{stock.name}</span>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>${stock.price?.toLocaleString() ?? "—"}</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>{currencySymbol(stock.type)}{stock.price?.toLocaleString() ?? "—"}</div>
           <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}% today</div>
         </div>
       </div>
@@ -444,8 +446,8 @@ function MainChart({ stock }) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
             <XAxis dataKey="day" tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} interval={9} />
-            <YAxis tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `$${v.toLocaleString()}`} />
-            <Tooltip content={<CustomTooltip />} />
+            <YAxis tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `${currencySymbol(stock.type)}${v.toLocaleString()}`} />
+            <Tooltip content={<CustomTooltip symbol={currencySymbol(stock.type)} />} />
             <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={2} fill="url(#mainGrad)" dot={false} />
           </AreaChart>
         </ResponsiveContainer>
@@ -540,8 +542,9 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const [userState, setUserState] = useState(getUser());
-  const [showAuth, setShowAuth]   = useState(!getToken());
+  const devBypass = process.env.REACT_APP_DEV_BYPASS === "1";
+  const [userState, setUserState] = useState(devBypass ? { email: "dev@local" } : getUser());
+  const [showAuth, setShowAuth]   = useState(devBypass ? false : !getToken());
   const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); };
   const handleLogout      = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
 

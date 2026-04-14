@@ -109,13 +109,14 @@ def _attempt_call(model: str, messages: list[dict], max_tokens: int,
 
 
 def _call_groq(messages: list[dict], max_tokens: int = 1024,
-               temperature: float = 0.2) -> str:
+               temperature: float = 0.2, model: str = PRIMARY_MODEL) -> str:
     """Single shared Groq call — all functions route through here."""
     if not GROQ_API_KEY:
         return "Error: GROQ_API_KEY not set"
 
+    retries = MAX_RETRIES if model == PRIMARY_MODEL else 2
     content, err, should_fallback = _attempt_call(
-        PRIMARY_MODEL, messages, max_tokens, temperature, MAX_RETRIES
+        model, messages, max_tokens, temperature, retries
     )
     if content is not None:
         return content
@@ -195,7 +196,7 @@ Add a disclaimer at the end."""
     return _call_groq([
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",   "content": user_message},
-    ])
+    ], model=FALLBACK_MODEL)
 
 
 def generate_forex_insight(pair: str, forex_data: str,
