@@ -2,7 +2,6 @@ import os
 import json
 import uuid
 import logging
-from datetime import timedelta
 
 try:
     import redis as redis_lib
@@ -12,7 +11,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 REDIS_URL        = os.getenv("REDIS_URL", "redis://localhost:6379")
-SESSION_TTL_HOURS = 24
+SESSION_TTL_HOURS   = 24
+SESSION_TTL_SECONDS = SESSION_TTL_HOURS * 3600
 MAX_HISTORY       = 10  # last 10 messages (5 exchanges)
 
 # Lazy Redis connection — never crashes at import time
@@ -74,11 +74,11 @@ def append_to_history(session_id: str, question: str, answer: str) -> None:
 
         client.setex(
             f"session:{session_id}",
-            timedelta(hours=SESSION_TTL_HOURS),
+            SESSION_TTL_SECONDS,
             json.dumps(history)
         )
-    except Exception:
-        pass  # Memory failure should never break the main response
+    except Exception as e:
+        logger.warning("Failed to append history for session %s: %s", session_id, e)
 
 
 def clear_session(session_id: str) -> None:
