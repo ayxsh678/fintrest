@@ -6,6 +6,7 @@ from cachetools import TTLCache
 from threading import Lock
 
 from rag.alpha_vantage import get_quote as av_get_quote, format_as_stock_data as av_format
+from rag.nse_quote import get_nse_quote, format_as_stock_data as nse_format
 
 india_cache = TTLCache(maxsize=100, ttl=300)
 india_lock  = Lock()
@@ -132,11 +133,15 @@ def get_india_stock_data(ticker: str) -> str:
         )
 
     except Exception as e:
-        av_quote = av_get_quote(ticker)
-        if av_quote:
-            result = av_format(ticker, av_quote, symbol="₹", label="NSE/BSE")
+        nse = get_nse_quote(ticker)
+        if nse:
+            result = nse_format(ticker, nse)
         else:
-            result = f"India stock data unavailable: {str(e)}"
+            av_quote = av_get_quote(ticker)
+            if av_quote:
+                result = av_format(ticker, av_quote, symbol="₹", label="NSE/BSE")
+            else:
+                result = f"India stock data unavailable: {str(e)}"
 
     with india_lock:
         india_cache[ticker] = result
