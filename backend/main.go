@@ -208,6 +208,22 @@ func detectSources(context string) []string {
 	return sources
 }
 
+func proxyGet(path string) (map[string]interface{}, error) {
+	resp, err := httpClient.Get(pythonURL() + path)
+	if err != nil {
+		return nil, fmt.Errorf("proxyGet request error [%s]: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("proxyGet upstream error [%s]: status %d", path, resp.StatusCode)
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("proxyGet decode error [%s]: %w", path, err)
+	}
+	return result, nil
+}
+
 func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -525,6 +541,34 @@ func main() {
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			log.Printf("[DELETE /session] decode error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode session response"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	// ── Watchlist Enrich ───────────────────────────────
+	r.POST("/watchlist/enrich", func(c *gin.Context) {
+		var req struct {
+			Tickers []string `json:"tickers" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		result, err := proxyPost("/watchlist/enrich", req)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Enrichment service unavailable"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
+	// ── Session History ────────────────────────────────
+	r.GET("/session/:id/history", func(c *gin.Context) {
+		sid := c.Param("id")
+		result, err := proxyGet("/session/" + sid + "/history")
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Session service unavailable"})
 			return
 		}
 		c.JSON(http.StatusOK, result)
