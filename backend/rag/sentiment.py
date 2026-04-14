@@ -1,22 +1,21 @@
+import logging
 import os
 import json
 import requests
 from datetime import datetime, timedelta
+from cachetools import TTLCache
+
+logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 
-# In-memory cache: { ticker: { ...result, cached_at } }
-_cache: dict[str, dict] = {}
-_CACHE_TTL_MINUTES = 30
+# Bounded cache: max 200 tickers, 30 min TTL
+_cache: TTLCache = TTLCache(maxsize=200, ttl=30 * 60)
 
 
 def _is_cached(ticker: str) -> bool:
-    entry = _cache.get(ticker)
-    if not entry:
-        return False
-    age = (datetime.utcnow() - entry["cached_at"]).total_seconds() / 60
-    return age < _CACHE_TTL_MINUTES
+    return ticker in _cache
 
 
 def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
@@ -50,7 +49,11 @@ def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
             if title and title != "[Removed]":
                 headlines.append(f"{title}. {desc}" if desc else title)
         return headlines
-    except Exception:
+    except requests.RequestException as e:
+        logger.warning("Failed to fetch headlines for %s: %s", ticker, e)
+        return []
+    except (ValueError, KeyError) as e:
+        logger.warning("Malformed NewsAPI response for %s: %s", ticker, e)
         return []
 
 
@@ -103,11 +106,15 @@ Respond ONLY with the JSON object. No markdown, no explanation outside the JSON.
 
         label = data.get("label", "Neutral")
         if label not in ("Bearish", "Neutral", "Bullish"):
-            label = "Bullish" if score >= 62 else ("Bearish" if score <= 38 else "Neutral")
+            label = "Bullish" if score >= 66 else ("Bearish" if score <= 34 else "Neutral")
 
         return score, label
 
-    except Exception:
+    except requests.RequestException as e:
+        logger.warning("Groq sentiment request failed for %s: %s", ticker, e)
+        return 50.0, "Neutral"
+    except (ValueError, KeyError, json.JSONDecodeError) as e:
+        logger.warning("Malformed Groq sentiment response for %s: %s", ticker, e)
         return 50.0, "Neutral"
 
 
@@ -125,9 +132,7 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
     ticker = ticker.upper().strip()
 
     if _is_cached(ticker):
-        entry = _cache[ticker].copy()
-        entry.pop("cached_at", None)
-        return entry
+        return dict(_cache[ticker])
 
     headlines    = _fetch_headlines(ticker, company_name)
     score, label = _score_with_groq(ticker, headlines)
@@ -140,5 +145,5 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
         "headlines":      headlines[:5],
     }
 
-    _cache[ticker] = {**result, "cached_at": datetime.utcnow()}
+    _cache[ticker] = dict(result)
     return result

@@ -466,6 +466,7 @@ export default function App() {
   const [alertThreshold, setAlertThreshold]     = useState("");
   const [alertDirection, setAlertDirection]     = useState("above");
   const [alertCreating, setAlertCreating]       = useState(false);
+  const [alertError, setAlertError]              = useState("");
   const [triggeredNotifs, setTriggeredNotifs]   = useState([]);
 
   const [sentiments, setSentiments]             = useState({});
@@ -529,9 +530,10 @@ export default function App() {
       if (!sid) return;
       try {
         const res  = await fetch(`${API_URL}/check_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
+        if (!res.ok) throw new Error(`check_alerts failed: ${res.status}`);
         const data = await res.json();
         if (data.triggered?.length) { setTriggeredNotifs(prev => [...prev, ...data.triggered]); fetchAlerts(); }
-      } catch {}
+      } catch (e) { console.error("Alert polling error:", e); }
     };
     poll();
     const t = setInterval(poll, 300_000);
@@ -545,17 +547,27 @@ export default function App() {
       const res  = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : []);
-    } catch {}
+    } catch (e) { console.error("Failed to fetch alerts:", e); }
   };
 
   const createAlert = async () => {
-    if (!alertTicker.trim() || !alertThreshold) return;
+    const ticker = alertTicker.toUpperCase().trim();
+    const threshold = parseFloat(alertThreshold);
+    if (!ticker || !Number.isFinite(threshold) || threshold <= 0) {
+      setAlertError("Enter a valid ticker and positive threshold.");
+      return;
+    }
+    setAlertError("");
     setAlertCreating(true);
     try {
       const sid = getSessionId() || await startSession();
-      await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, ticker: alertTicker.toUpperCase().trim(), threshold: parseFloat(alertThreshold), direction: alertDirection }) });
-      setAlertTicker(""); setAlertThreshold(""); fetchAlerts();
-    } catch {}
+      const res = await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, ticker, threshold, direction: alertDirection }) });
+      if (!res.ok) throw new Error(`create_alert failed: ${res.status}`);
+      setAlertTicker(""); setAlertThreshold(""); await fetchAlerts();
+    } catch (e) {
+      console.error("Failed to create alert:", e);
+      setAlertError("Failed to create alert. Please try again.");
+    }
     setAlertCreating(false);
   };
 
@@ -563,9 +575,10 @@ export default function App() {
     const sid = getSessionId();
     if (!sid) return;
     try {
-      await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) });
-      fetchAlerts();
-    } catch {}
+      const res = await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) });
+      if (!res.ok) throw new Error(`delete_alert failed: ${res.status}`);
+      await fetchAlerts();
+    } catch (e) { console.error("Failed to delete alert:", e); }
   };
 
   const dismissNotif       = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
@@ -624,19 +637,28 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question, query: question, session_id: sid, time_range: timeRange }),
       });
-      const data = await res.json();
-      if (data.session_id) setSessionId(data.session_id);
-
-      if (isCompare && data.ticker_a) {
-        setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data);
-        setMessages(prev => [...prev, { role: "assistant", content: data.verdict, sources: ["Yahoo Finance"] }]);
-      } else if (isPortfolio && data.tickers) {
-        setPortfolio(data.tickers); setPortfolioData(data);
-        setMessages(prev => [...prev, { role: "assistant", content: data.summary, sources: ["Yahoo Finance"] }]);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.detail || data?.error || `Request failed (${res.status}).`;
+        setMessages(prev => [...prev, { role: "assistant", content: msg, sources: [] }]);
       } else {
-        setMessages(prev => [...prev, { role: "assistant", content: data.answer || data.detail, sources: data.sources || [], responseTime: data.response_time }]);
+        if (data.session_id) setSessionId(data.session_id);
+
+        if (isCompare && data.ticker_a) {
+          setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data);
+          setMessages(prev => [...prev, { role: "assistant", content: data.verdict, sources: ["Yahoo Finance"] }]);
+        } else if (isPortfolio && data.tickers) {
+          setPortfolio(data.tickers); setPortfolioData(data);
+          setMessages(prev => [...prev, { role: "assistant", content: data.summary, sources: ["Yahoo Finance"] }]);
+        } else {
+          const content = data.answer || data.detail || "No response received.";
+          setMessages(prev => [...prev, { role: "assistant", content, sources: data.sources || [], responseTime: data.response_time }]);
+        }
       }
-    } catch { setMessages(prev => [...prev, { role: "assistant", content: "Connection error.", sources: [] }]); }
+    } catch (e) {
+      console.error("sendMessage error:", e);
+      setMessages(prev => [...prev, { role: "assistant", content: "Connection error.", sources: [] }]);
+    }
     setLoading(false);
   };
 
@@ -731,6 +753,7 @@ export default function App() {
             style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0" }}>
             + Add Alert
           </button>
+          {alertError && <div style={{ color: "#f85149", fontSize: 12 }}>{alertError}</div>}
           {activeAlerts.map(a => (
             <div key={a.id} style={{ display: "flex", justifyContent: "space-between", background: "#161b22", padding: 10, borderRadius: 8 }}>
               <span style={{ color: "#f7c843" }}>{a.ticker} @ {a.threshold}</span>

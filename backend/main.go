@@ -38,8 +38,10 @@ type QueryResponse struct {
 
 // ── Active session tracking ────────────────────────────
 
+const sessionTTL = 24 * time.Hour
+
 var (
-	activeSessions   = make(map[string]struct{})
+	activeSessions   = make(map[string]time.Time)
 	activeSessionsMu sync.Mutex
 )
 
@@ -48,15 +50,29 @@ func trackSession(id string) {
 		return
 	}
 	activeSessionsMu.Lock()
-	activeSessions[id] = struct{}{}
+	activeSessions[id] = time.Now()
+	activeSessionsMu.Unlock()
+}
+
+func removeSession(id string) {
+	if id == "" {
+		return
+	}
+	activeSessionsMu.Lock()
+	delete(activeSessions, id)
 	activeSessionsMu.Unlock()
 }
 
 func getActiveSessions() []string {
 	activeSessionsMu.Lock()
 	defer activeSessionsMu.Unlock()
+	now := time.Now()
 	ids := make([]string, 0, len(activeSessions))
-	for id := range activeSessions {
+	for id, lastSeen := range activeSessions {
+		if now.Sub(lastSeen) > sessionTTL {
+			delete(activeSessions, id)
+			continue
+		}
 		ids = append(ids, id)
 	}
 	return ids
@@ -95,12 +111,17 @@ func buildContext(question, timeRange string) string {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode >= 400 {
+		log.Printf("[buildContext] upstream error: status %d", resp.StatusCode)
+		return "System: Retrieval service currently unavailable."
+	}
+
 	var result struct {
 		Context string `json:"context"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		log.Printf("[buildContext] decode error: %v", err)
-		return ""
+		return "System: Retrieval service returned malformed data."
 	}
 	return result.Context
 }
@@ -122,6 +143,11 @@ func generateResponse(question, context, sessionID string) (string, string) {
 		return "System: Inference engine currently unavailable.", sessionID
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		log.Printf("[generateResponse] upstream error: status %d", resp.StatusCode)
+		return "System: Inference engine currently unavailable.", sessionID
+	}
 
 	var result struct {
 		Answer    string `json:"answer"`
@@ -253,10 +279,22 @@ func sendAlertEmail(alert map[string]interface{}) {
 	}
 	smtpAddr := net.JoinHostPort(smtpHost, strconv.Itoa(smtpPortInt))
 
-	ticker         := fmt.Sprintf("%v", alert["ticker"])
-	triggeredPrice := fmt.Sprintf("%v", alert["triggered_price"])
-	threshold      := fmt.Sprintf("%v", alert["threshold"])
-	direction      := fmt.Sprintf("%v", alert["direction"])
+	fmtField := func(key string) string {
+		v, ok := alert[key]
+		if !ok || v == nil {
+			return "N/A"
+		}
+		return fmt.Sprintf("%v", v)
+	}
+	ticker         := fmtField("ticker")
+	triggeredPrice := fmtField("triggered_price")
+	threshold      := fmtField("threshold")
+	direction      := fmtField("direction")
+
+	if ticker == "N/A" {
+		log.Printf("[alert] Missing ticker in alert payload — skipping email")
+		return
+	}
 
 	subject := fmt.Sprintf("Fintrest Alert: %s hit your price target", ticker)
 	body    := fmt.Sprintf(
@@ -330,13 +368,13 @@ func isAllowedOrigin(origin string) bool {
 	if origin == "http://localhost:3000" || origin == "http://localhost:5173" {
 		return true
 	}
-	// Allow all Vercel preview and production deployments for this project
-	if strings.HasSuffix(origin, ".vercel.app") {
-		return true
-	}
-	// Allow explicit production origin from env
-	if prod := os.Getenv("ALLOWED_ORIGIN"); prod != "" && origin == prod {
-		return true
+	// Allow explicit production origins from env (comma-separated allowlist)
+	if prod := os.Getenv("ALLOWED_ORIGIN"); prod != "" {
+		for _, allowed := range strings.Split(prod, ",") {
+			if strings.TrimSpace(allowed) == origin {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -391,7 +429,12 @@ func main() {
 
 	// ── Stock ──────────────────────────────────────────
 	r.GET("/stock/:ticker", func(c *gin.Context) {
-		c.JSON(http.StatusOK, getStockData(strings.ToUpper(c.Param("ticker"))))
+		ticker := strings.ToUpper(strings.TrimSpace(c.Param("ticker")))
+		if ticker == "" || len(ticker) > 20 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticker"})
+			return
+		}
+		c.JSON(http.StatusOK, getStockData(ticker))
 	})
 
 	// ── Sentiment ──────────────────────────────────────
@@ -430,9 +473,11 @@ func main() {
 	})
 
 	r.DELETE("/session/:id", func(c *gin.Context) {
+		sid := c.Param("id")
+		removeSession(sid)
 		req, err := http.NewRequest(
 			http.MethodDelete,
-			pythonURL()+"/session/"+url.PathEscape(c.Param("id")),
+			pythonURL()+"/session/"+url.PathEscape(sid),
 			nil,
 		)
 		if err != nil {

@@ -140,9 +140,10 @@ def get_stock_data(ticker: str) -> str:
         if hist.empty:
             return f"No price history found for {ticker}."
 
+        first_close = hist["Close"].iloc[0]
         change_pct = (
-            (hist["Close"].iloc[-1] - hist["Close"].iloc[0])
-            / hist["Close"].iloc[0] * 100
+            (hist["Close"].iloc[-1] - first_close) / first_close * 100
+            if first_close else 0.0
         )
         avg_volume_30d = hist_30d["Volume"].mean() if not hist_30d.empty else 0
         latest_volume  = hist["Volume"].iloc[-1]

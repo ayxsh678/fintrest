@@ -66,6 +66,7 @@ func handleRegister(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[register] New user registered: %s (id=%d)", req.Email, userID)
 	c.JSON(http.StatusCreated, gin.H{"token": token, "email": req.Email, "user_id": userID})
 }
 
@@ -143,7 +144,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return jwtSecret, nil
 		})
 
-		if err != nil || !token.Valid {
+		if err != nil || token == nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			return
 		}

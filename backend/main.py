@@ -16,7 +16,21 @@ from model.inference import (
 import os
 import uvicorn
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Fintrest - Python Service")
+
+
+@app.on_event("startup")
+def validate_config():
+    missing = [k for k in ("GROQ_API_KEY",) if not os.getenv(k)]
+    if missing:
+        logger.warning("Missing required env vars: %s — related features will degrade.", ", ".join(missing))
+    optional = [k for k in ("NEWS_API_KEY",) if not os.getenv(k)]
+    if optional:
+        logger.warning("Missing optional env vars: %s", ", ".join(optional))
 
 # ── CORS ────────────────────────────────────────────────
 _allowed_origin = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
