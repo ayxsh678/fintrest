@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: quantiq-python
+    name: fintrest-python
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
@@ -20,7 +20,7 @@ services:
         sync: false
 
   - type: web
-    name: quantiq-go
+    name: fintrest-go
     runtime: go
     rootDir: backend
     buildCommand: go build -o main .

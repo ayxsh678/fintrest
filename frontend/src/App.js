@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, CartesianGrid
 } from "recharts";
 
-const API_URL = process.env.REACT_APP_API_URL || "https://quantiq-go.onrender.com";
+const API_URL = process.env.REACT_APP_API_URL || "https://fintrest-go.onrender.com";
 
 // ── Auth helpers ────────────────────────────────────────
 const getToken    = () => localStorage.getItem("fintrest_token");
@@ -400,7 +400,7 @@ function AuthModal({ onSuccess }) {
       <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: 28, width: "100%", maxWidth: 360, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
           <div style={{ width: 32, height: 32, background: "#f7c843", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💹</div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "#e6edf3" }}>Quantiq</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "#e6edf3" }}>Fintrest</div>
         </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
           {["login", "register"].map(m => (
@@ -446,7 +446,7 @@ export default function App() {
 
   const [watchlist, setWatchlist]               = useState(WATCHLIST_DEFAULT);
   const [selectedStock, setSelectedStock]       = useState(WATCHLIST_DEFAULT[0]);
-  const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hello! I'm Quantiq, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto.", sources: [] }]);
+  const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hello! I'm Fintrest, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto.", sources: [] }]);
   const [input, setInput]                       = useState("");
   const [loading, setLoading]                   = useState(false);
   const [timeRange, setTimeRange]               = useState("7d");
@@ -781,7 +781,7 @@ export default function App() {
 
   const renderChatContent = () => (
     <>
-      {!isMobile && <div style={{ padding: 15, borderBottom: "1px solid #21262d", fontWeight: 700 }}>Quantiq Advisor</div>}
+      {!isMobile && <div style={{ padding: 15, borderBottom: "1px solid #21262d", fontWeight: 700 }}>Fintrest Advisor</div>}
       <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
         {messages.map((msg, i) => <ChatBubble key={i} msg={msg} />)}
         {loading && <div style={{ color: "#8b949e", fontSize: 13 }}>Analyzing market data...</div>}
@@ -815,7 +815,7 @@ export default function App() {
         <header style={{ borderBottom: "1px solid #21262d", padding: "12px 32px", display: "flex", justifyContent: "space-between", background: "#0d1117" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ background: "#f7c843", padding: "4px 8px", borderRadius: 8, color: "#0d1117" }}>💹</div>
-            <span style={{ fontWeight: 700, fontSize: 18 }}>Quantiq</span>
+            <span style={{ fontWeight: 700, fontSize: 18 }}>Fintrest</span>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={handleNewChat} style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: "6px 15px", borderRadius: 20 }}>+ New</button>

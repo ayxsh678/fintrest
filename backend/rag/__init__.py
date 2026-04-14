@@ -1,5 +1,5 @@
 """
-Quantiq RAG Package
+Fintrest RAG Package
 """
 
 from .sentiment import get_sentiment

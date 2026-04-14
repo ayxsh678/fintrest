@@ -16,7 +16,7 @@ from model.inference import (
 import os
 import uvicorn
 
-app = FastAPI(title="Quantiq - Python Service")
+app = FastAPI(title="Fintrest - Python Service")
 
 # ── CORS ────────────────────────────────────────────────
 _allowed_origin = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
@@ -143,7 +143,7 @@ class SentimentResponse(BaseModel):
 
 @app.get("/")
 def health():
-    return {"status": "Quantiq Python service is running"}
+    return {"status": "Fintrest Python service is running"}
 
 
 # ── Session ────────────────────────────────────────────

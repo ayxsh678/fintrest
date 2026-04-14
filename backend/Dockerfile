@@ -14,13 +14,13 @@ WORKDIR /app
 
 COPY --from=builder /install /usr/local
 
-RUN addgroup --system quantiq && adduser --system --ingroup quantiq quantiq
+RUN addgroup --system fintrest && adduser --system --ingroup fintrest fintrest
 
 # FIX: Copy the entire project context to ensure main.py and all modules are included
 COPY . .
 
-RUN chown -R quantiq:quantiq /app
-USER quantiq
+RUN chown -R fintrest:fintrest /app
+USER fintrest
 
 EXPOSE 8000
 

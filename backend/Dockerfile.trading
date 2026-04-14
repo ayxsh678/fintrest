@@ -1,4 +1,4 @@
-# quantiq/backend/Dockerfile.go  ← NEW FILE, place in your backend/ folder
+# fintrest/backend/Dockerfile.go  ← NEW FILE, place in your backend/ folder
 #
 # Go multi-stage build — final image is ~10MB (vs 1GB+ for Python)
 # The Go binary is statically compiled so no runtime deps needed at all
@@ -28,13 +28,13 @@ FROM alpine:3.19 AS runtime
 
 # ca-certificates needed for HTTPS calls to Kite API, yfinance sidecar etc.
 RUN apk add --no-cache ca-certificates tzdata && \
-    addgroup -S quantiq && adduser -S quantiq -G quantiq
+    addgroup -S fintrest && adduser -S fintrest -G fintrest
 
 WORKDIR /app
 COPY --from=builder /build/trading-engine ./trading-engine
 
-RUN chown quantiq:quantiq ./trading-engine
-USER quantiq
+RUN chown fintrest:fintrest ./trading-engine
+USER fintrest
 
 EXPOSE 8081
 

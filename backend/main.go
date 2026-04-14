@@ -258,13 +258,13 @@ func sendAlertEmail(alert map[string]interface{}) {
 	threshold      := fmt.Sprintf("%v", alert["threshold"])
 	direction      := fmt.Sprintf("%v", alert["direction"])
 
-	subject := fmt.Sprintf("Quantiq Alert: %s hit your price target", ticker)
+	subject := fmt.Sprintf("Fintrest Alert: %s hit your price target", ticker)
 	body    := fmt.Sprintf(
-		"Your Quantiq alert has triggered!\n\n"+
+		"Your Fintrest alert has triggered!\n\n"+
 			"Ticker:       %s\n"+
 			"Direction:    %s $%s\n"+
 			"Triggered at: $%s\n\n"+
-			"Log in to Quantiq to review your portfolio.",
+			"Log in to Fintrest to review your portfolio.",
 		ticker, direction, threshold, triggeredPrice,
 	)
 
@@ -358,7 +358,7 @@ func main() {
 
 	// ── Health ─────────────────────────────────────────
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "Quantiq Go Gateway is running"})
+		c.JSON(http.StatusOK, gin.H{"status": "Fintrest Go Gateway is running"})
 	})
 
 	// ── Ask ────────────────────────────────────────────

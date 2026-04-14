@@ -1,4 +1,4 @@
-# quantiq/frontend/Dockerfile
+# fintrest/frontend/Dockerfile
 #
 # Stage 1: build the React app
 # Stage 2: serve the static output via nginx
@@ -22,8 +22,8 @@ COPY . .
 # ARG must be declared before it can be used in an ENV instruction.
 # In the original, if $REACT_APP_API_URL was not passed as --build-arg,
 # the ENV line silently set an empty string, baking "" into the JS bundle.
-ARG REACT_APP_API_URL=https://app.quantiq.in/api
-ARG REACT_APP_TRADING_URL=https://app.quantiq.in/trading
+ARG REACT_APP_API_URL=https://app.fintrest.in/api
+ARG REACT_APP_TRADING_URL=https://app.fintrest.in/trading
 
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 ENV REACT_APP_TRADING_URL=$REACT_APP_TRADING_URL
