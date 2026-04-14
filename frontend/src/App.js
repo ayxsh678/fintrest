@@ -532,8 +532,13 @@ function AuthModal({ onSuccess }) {
 
 // ── Main App ────────────────────────────────────────────
 export default function App() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 900);
   const [mobileTab, setMobileTab] = useState("market");
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 900);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [activeTab, setActiveTab] = useState("watchlist");
 
   useEffect(() => {
