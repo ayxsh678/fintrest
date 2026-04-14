@@ -48,8 +48,15 @@ def extract_comparison_tickers(query: str) -> tuple[str, str] | None:
     query_lower = query.lower()
     found = []
 
-    # 1. Match company names — check both US and India maps
-    for name, ticker in {**COMPANY_MAP, **INDIA_COMPANY_MAP}.items():
+    # 1. Match company names.
+    # India entries take precedence over US entries on name collisions
+    # (checked first; US loop skips any name already in INDIA_COMPANY_MAP).
+    for name, ticker in INDIA_COMPANY_MAP.items():
+        if name in query_lower and ticker not in found:
+            found.append(ticker)
+    for name, ticker in COMPANY_MAP.items():
+        if name in INDIA_COMPANY_MAP:
+            continue  # INDIA_COMPANY_MAP has precedence
         if name in query_lower and ticker not in found:
             found.append(ticker)
 

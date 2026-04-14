@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -245,11 +246,17 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("proxyJSON upstream error [%s %s]: status %d", method, path, resp.StatusCode)
 	}
 	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
 		var clientErr interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&clientErr); err == nil {
+		if err := json.Unmarshal(body, &clientErr); err == nil {
 			return clientErr, nil
 		}
-		return nil, fmt.Errorf("proxyJSON client error [%s %s]: status %d", method, path, resp.StatusCode)
+		// Non-JSON body — include a truncated snippet so the error is actionable
+		snippet := string(body)
+		if len(snippet) > 200 {
+			snippet = snippet[:200] + "…"
+		}
+		return nil, fmt.Errorf("proxyJSON client error [%s %s]: status %d: %s", method, path, resp.StatusCode, snippet)
 	}
 	var result interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
