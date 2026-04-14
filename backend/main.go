@@ -468,6 +468,28 @@ func main() {
 		c.JSON(http.StatusOK, result)
 	})
 
+	r.GET("/news/:ticker", func(c *gin.Context) {
+		ticker  := strings.ToUpper(c.Param("ticker"))
+		company := c.DefaultQuery("company", "")
+		days    := c.DefaultQuery("days", "7")
+		path    := "/news/" + url.PathEscape(ticker) + "?days=" + url.QueryEscape(days)
+		if company != "" {
+			path += "&company=" + url.QueryEscape(company)
+		}
+		resp, err := httpClient.Get(pythonURL() + path)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "News service unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+		var result interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode news data"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
 	// ── Session ────────────────────────────────────────
 	r.POST("/session/new", func(c *gin.Context) {
 		result, err := proxyPost("/session/new", map[string]string{})

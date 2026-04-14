@@ -189,3 +189,177 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
     with _cache_lock:
         _cache[ticker] = dict(result)
     return result
+
+
+# ── News with per-article impact analysis ─────────────────────────────
+
+_impact_cache: TTLCache = TTLCache(maxsize=200, ttl=30 * 60)
+_impact_lock = threading.Lock()
+
+
+def _fetch_articles_detailed(ticker: str, company_name: str = "", days: int = 7) -> list[dict]:
+    """Fetch recent news articles with full metadata (title, source, url, etc.)."""
+    api_key = os.getenv("NEWS_API_KEY", "")
+    if not api_key:
+        return []
+
+    query     = f"{company_name} OR {ticker} stock" if company_name else f"{ticker} stock"
+    from_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    try:
+        resp = requests.get(
+            "https://newsapi.org/v2/everything",
+            params={
+                "q":        query,
+                "from":     from_date,
+                "sortBy":   "relevancy",
+                "language": "en",
+                "pageSize": 12,
+                "apiKey":   api_key,
+            },
+            timeout=8,
+        )
+        resp.raise_for_status()
+        out = []
+        for a in resp.json().get("articles", []):
+            title = (a.get("title") or "").strip()
+            if not title or title == "[Removed]":
+                continue
+            out.append({
+                "title":        title,
+                "description":  (a.get("description") or "").strip(),
+                "source":       (a.get("source") or {}).get("name", "Unknown"),
+                "published_at": a.get("publishedAt", ""),
+                "url":          a.get("url", ""),
+            })
+        return out[:8]
+    except requests.RequestException as e:
+        logger.warning("Failed to fetch detailed articles for %s: %s", ticker, e)
+        return []
+    except (ValueError, KeyError) as e:
+        logger.warning("Malformed NewsAPI response for %s: %s", ticker, e)
+        return []
+
+
+def _analyze_impact_with_groq(company: str, ticker: str, articles: list[dict]) -> dict:
+    """Ask Groq to score per-article impact + explain in plain English."""
+    if not GROQ_API_KEY or not articles:
+        return {}
+
+    articles_text = "\n".join(
+        f"[Article {i+1}]\nTitle: {a['title']}\nSource: {a['source']}\nSummary: {a.get('description') or 'N/A'}"
+        for i, a in enumerate(articles[:6])
+    )
+
+    prompt = f"""You are a financial news analyst explaining things to a beginner investor.
+Analyze these news articles about {company} ({ticker}).
+
+For EACH article, return:
+- index: article number (1-based)
+- sentiment: "positive" | "negative" | "neutral"
+- impact_score: integer 1-10 (how much this could move the stock)
+- impact_explanation: 1-2 simple sentences starting with "This news may..." or "This could..." explaining WHY it matters
+- price_direction: "may increase" | "may decrease" | "likely neutral"
+
+Also return overall_sentiment and a 2-sentence sentiment_summary.
+
+Articles:
+{articles_text}
+
+Respond ONLY with this JSON (no markdown):
+{{
+  "articles": [
+    {{"index": 1, "sentiment": "positive", "impact_score": 7, "impact_explanation": "...", "price_direction": "may increase"}}
+  ],
+  "overall_sentiment": "positive",
+  "sentiment_summary": "..."
+}}"""
+
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+    payload = {
+        "model":       "llama-3.3-70b-versatile",
+        "messages":    [{"role": "user", "content": prompt}],
+        "max_tokens":  1500,
+        "temperature": 0.3,
+    }
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
+        except requests.RequestException as e:
+            logger.warning("Groq impact network error for %s (attempt %d): %s", ticker, attempt + 1, e)
+            if attempt < MAX_RETRIES - 1:
+                _sleep_backoff(attempt)
+                continue
+            return {}
+        if resp.status_code == 200:
+            try:
+                raw = resp.json()["choices"][0]["message"]["content"].strip()
+                raw = raw.replace("```json", "").replace("```", "").strip()
+                return json.loads(raw)
+            except (ValueError, KeyError, json.JSONDecodeError) as e:
+                logger.warning("Malformed Groq impact response for %s: %s", ticker, e)
+                return {}
+        if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES - 1:
+            _sleep_backoff(attempt, resp.headers.get("Retry-After"))
+            continue
+        logger.warning("Groq impact failed for %s with status %d", ticker, resp.status_code)
+        return {}
+    return {}
+
+
+def get_news_impact(ticker: str, company_name: str = "", days: int = 7) -> dict:
+    """
+    Returns news with per-article impact analysis:
+    {
+      ticker, company_name, overall_sentiment, sentiment_summary,
+      news: [{title, source, url, published_at, sentiment, impact_score, impact_explanation, price_direction}]
+    }
+    """
+    ticker = ticker.upper().strip()
+    cache_key = f"{ticker}:{days}"
+
+    with _impact_lock:
+        if cache_key in _impact_cache:
+            return dict(_impact_cache[cache_key])
+
+    articles = _fetch_articles_detailed(ticker, company_name, days=days)
+    if not articles:
+        result = {
+            "ticker":            ticker,
+            "company_name":      company_name or ticker,
+            "overall_sentiment": "neutral",
+            "sentiment_summary": f"No recent news found for {company_name or ticker}.",
+            "news":              [],
+        }
+        with _impact_lock:
+            _impact_cache[cache_key] = dict(result)
+        return result
+
+    analysis = _analyze_impact_with_groq(company_name or ticker, ticker, articles)
+    analyzed = {a.get("index"): a for a in analysis.get("articles", []) if isinstance(a, dict)}
+
+    news_items = []
+    for i, art in enumerate(articles[:6], start=1):
+        match = analyzed.get(i, {})
+        news_items.append({
+            "title":              art["title"],
+            "source":             art["source"],
+            "published_at":       art["published_at"],
+            "url":                art["url"],
+            "sentiment":          match.get("sentiment", "neutral"),
+            "impact_score":       int(match.get("impact_score", 3) or 3),
+            "impact_explanation": match.get("impact_explanation", "Unable to analyze impact."),
+            "price_direction":    match.get("price_direction", "likely neutral"),
+        })
+
+    result = {
+        "ticker":            ticker,
+        "company_name":      company_name or ticker,
+        "overall_sentiment": analysis.get("overall_sentiment", "neutral"),
+        "sentiment_summary": analysis.get("sentiment_summary", f"Mixed signals for {company_name or ticker}."),
+        "news":              news_items,
+    }
+    with _impact_lock:
+        _impact_cache[cache_key] = dict(result)
+    return result

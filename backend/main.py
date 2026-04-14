@@ -6,7 +6,7 @@ from rag.portfolio import build_portfolio_context, extract_tickers_from_query, g
 from rag.comparison import build_comparison_context, extract_comparison_tickers, get_comparison_data
 from rag.memory import create_session, get_history, append_to_history, clear_session
 from rag.alerts import create_alert, get_alerts, delete_alert, check_alerts
-from rag.sentiment import get_sentiment
+from rag.sentiment import get_sentiment, get_news_impact
 from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot, CURRENCY_PAIRS
 from model.inference import (
     generate_response, generate_portfolio_summary,
@@ -247,6 +247,18 @@ def sentiment(ticker: str, company: str = ""):
         raise HTTPException(status_code=400, detail="Ticker cannot be empty")
     result = get_sentiment(ticker_clean, company_name=company)
     return SentimentResponse(**result)
+
+
+# ── News with per-article impact ───────────────────────
+
+@app.get("/news/{ticker}")
+def news_impact(ticker: str, company: str = "", days: int = 7):
+    ticker_clean = ticker.upper().strip()
+    if not ticker_clean:
+        raise HTTPException(status_code=400, detail="Ticker cannot be empty")
+    if days < 1 or days > 30:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 30")
+    return get_news_impact(ticker_clean, company_name=company, days=days)
 
 
 # ── Portfolio ──────────────────────────────────────────
