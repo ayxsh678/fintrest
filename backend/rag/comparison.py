@@ -2,6 +2,7 @@ import concurrent.futures
 import re
 import logging
 from rag.retriever import get_stock_data, get_earnings_data
+from rag.india_stocks import get_india_stock_data
 try:
     from rag.retriever import COMPANY_MAP, KNOWN_TICKERS
 except ImportError:
@@ -13,8 +14,10 @@ logger = logging.getLogger(__name__)
 def get_comparison_data(ticker_a: str, ticker_b: str) -> dict:
     def fetch_one(ticker):
         try:
+            is_india = ticker.upper().endswith(".NS") or ticker.upper().endswith(".BO")
+            stock_data = get_india_stock_data(ticker) if is_india else get_stock_data(ticker)
             return ticker, {
-                "stock": get_stock_data(ticker),
+                "stock": stock_data,
                 "earnings": get_earnings_data(ticker),
             }
         except Exception as e:

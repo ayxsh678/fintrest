@@ -158,11 +158,23 @@ def get_stock_data(ticker: str) -> str:
         except Exception:
             long_name = ticker
 
-        price      = fi.last_price      or "N/A"
-        prev_close = fi.previous_close  or "N/A"
-        week_high  = fi.fifty_two_week_high or "N/A"
-        week_low   = fi.fifty_two_week_low  or "N/A"
-        market_cap = int(fi.market_cap or 0)
+        def _fi(*names, default="N/A"):
+            for n in names:
+                try:
+                    v = getattr(fi, n, None)
+                    if v is None:
+                        v = fi[n] if n in fi else None
+                except (KeyError, AttributeError, TypeError):
+                    v = None
+                if v not in (None, ""):
+                    return v
+            return default
+
+        price      = _fi("last_price")
+        prev_close = _fi("previous_close")
+        week_high  = _fi("year_high", "fifty_two_week_high")
+        week_low   = _fi("year_low",  "fifty_two_week_low")
+        market_cap = int(_fi("market_cap", default=0) or 0)
 
         # PE and EPS not in fast_info — attempt quietly, skip if rate limited
         try:

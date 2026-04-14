@@ -10,9 +10,11 @@ logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 
-MAX_RETRIES     = 3
+PRIMARY_MODEL   = "llama-3.3-70b-versatile"
+FALLBACK_MODEL  = "llama-3.1-8b-instant"
+MAX_RETRIES     = 5
 BASE_BACKOFF    = 1.0
-MAX_BACKOFF     = 8.0
+MAX_BACKOFF     = 15.0
 RETRY_STATUSES  = {429, 500, 502, 503, 504}
 
 
@@ -44,14 +46,11 @@ Add a disclaimer for investment advice.
 If the user refers to a previous question, use conversation history to resolve context."""
 
 
-def _call_groq(messages: list[dict], max_tokens: int = 1024,
-               temperature: float = 0.2) -> str:
-    """Single shared Groq call — all functions route through here."""
-    if not GROQ_API_KEY:
-        return "Error: GROQ_API_KEY not set"
-
+def _attempt_call(model: str, messages: list[dict], max_tokens: int,
+                  temperature: float, retries: int) -> tuple[str | None, str, bool]:
+    """Try one model with retries. Returns (content, error, should_fallback)."""
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
@@ -62,51 +61,78 @@ def _call_groq(messages: list[dict], max_tokens: int = 1024,
     }
 
     last_error = "Error: Groq request failed. Please try again."
-    for attempt in range(MAX_RETRIES):
+    for attempt in range(retries):
         try:
             response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
         except requests.exceptions.Timeout:
-            logger.warning("Groq timeout on attempt %d/%d", attempt + 1, MAX_RETRIES)
+            logger.warning("Groq timeout on %s attempt %d/%d", model, attempt + 1, retries)
             last_error = "Error: Request to Groq timed out. Please try again."
-            if attempt < MAX_RETRIES - 1:
+            if attempt < retries - 1:
                 _sleep_backoff(attempt)
                 continue
-            return last_error
+            return None, last_error, True
         except requests.exceptions.ConnectionError as e:
-            logger.warning("Groq connection error on attempt %d/%d: %s", attempt + 1, MAX_RETRIES, e)
+            logger.warning("Groq connection error on %s attempt %d/%d: %s", model, attempt + 1, retries, e)
             last_error = "Error: Could not reach Groq. Please try again."
-            if attempt < MAX_RETRIES - 1:
+            if attempt < retries - 1:
                 _sleep_backoff(attempt)
                 continue
-            return last_error
+            return None, last_error, True
         except requests.exceptions.RequestException as e:
-            return f"Error: {e}"
+            return None, f"Error: {e}", False
 
         status = response.status_code
         if status == 200:
             try:
-                return response.json()["choices"][0]["message"]["content"]
+                return response.json()["choices"][0]["message"]["content"], "", False
             except (KeyError, IndexError, ValueError):
-                return "Error: Unexpected response format from Groq."
+                return None, "Error: Unexpected response format from Groq.", False
 
-        if status in RETRY_STATUSES and attempt < MAX_RETRIES - 1:
-            logger.warning("Groq returned %d on attempt %d/%d — retrying", status, attempt + 1, MAX_RETRIES)
-            _sleep_backoff(attempt, response.headers.get("Retry-After"))
+        if status == 401:
+            return None, "Error: Invalid GROQ_API_KEY.", False
+
+        if status in RETRY_STATUSES:
             last_error = (
                 "Error: Groq rate limit hit. Please wait a moment and retry."
                 if status == 429 else f"Error: Groq API returned {status}"
             )
-            continue
+            if attempt < retries - 1:
+                logger.warning("Groq %s returned %d on attempt %d/%d — retrying",
+                               model, status, attempt + 1, retries)
+                _sleep_backoff(attempt, response.headers.get("Retry-After"))
+                continue
+            return None, last_error, True
 
-        if status == 401:
-            return "Error: Invalid GROQ_API_KEY."
-        if status == 429:
-            return "Error: Groq is busy right now. Please try again in a moment."
-        if status in RETRY_STATUSES:
-            return "Error: Groq is temporarily unavailable. Please try again shortly."
-        return f"Error: Groq API returned {status}"
+        return None, f"Error: Groq API returned {status}", False
 
-    return last_error
+    return None, last_error, True
+
+
+def _call_groq(messages: list[dict], max_tokens: int = 1024,
+               temperature: float = 0.2, model: str = PRIMARY_MODEL) -> str:
+    """Single shared Groq call — all functions route through here."""
+    if not GROQ_API_KEY:
+        return "Error: GROQ_API_KEY not set"
+
+    retries = MAX_RETRIES if model == PRIMARY_MODEL else 2
+    content, err, should_fallback = _attempt_call(
+        model, messages, max_tokens, temperature, retries
+    )
+    if content is not None:
+        return content
+
+    if should_fallback:
+        logger.warning("Primary model exhausted — falling back to %s", FALLBACK_MODEL)
+        content, fb_err, _ = _attempt_call(
+            FALLBACK_MODEL, messages, max_tokens, temperature, retries=2
+        )
+        if content is not None:
+            return content
+        err = fb_err or err
+
+    if "rate limit" in err.lower() or "429" in err:
+        return "Error: Groq is busy right now. Please try again in a moment."
+    return err
 
 
 def generate_response(question: str, context: str,
@@ -170,7 +196,7 @@ Add a disclaimer at the end."""
     return _call_groq([
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",   "content": user_message},
-    ])
+    ], model=FALLBACK_MODEL)
 
 
 def generate_forex_insight(pair: str, forex_data: str,

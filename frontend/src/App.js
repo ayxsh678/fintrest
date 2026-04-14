@@ -231,8 +231,90 @@ function TradingViewChart({ ticker, height = 220 }) {
   );
 }
 
+// ── News Feed with impact scoring ────────────────────────
+function NewsFeed({ ticker, news, loading }) {
+  const [openIdx, setOpenIdx] = useState(null);
+  const items = news?.news ?? [];
+  const summary = news?.sentiment_summary;
+  const overall = news?.overall_sentiment;
+
+  const dirColor = (d) => d === "may increase" ? "#3fb950" : d === "may decrease" ? "#f85149" : "#e3b341";
+  const dirArrow = (d) => d === "may increase" ? "▲" : d === "may decrease" ? "▼" : "▬";
+  const timeAgo = (iso) => {
+    if (!iso) return "";
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 3600) return `${Math.max(1, Math.floor(diff / 60))}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+  return (
+    <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px 24px", marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, color: "#8b949e", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Smart News</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{ticker}</div>
+        </div>
+        {overall && (
+          <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>Overall: <span style={{ color: overall === "positive" ? "#3fb950" : overall === "negative" ? "#f85149" : "#e3b341", fontWeight: 700 }}>{overall}</span></div>
+        )}
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 12, color: "#8b949e" }}>Fetching news and analyzing impact…</div>
+      ) : items.length === 0 ? (
+        <div style={{ fontSize: 11, color: "#8b949e" }}>{summary || "No recent news found."}</div>
+      ) : (
+        <>
+          {summary && <div style={{ fontSize: 11, color: "#c9d1d9", lineHeight: 1.5, marginBottom: 12, padding: "8px 12px", background: "#161b22", borderRadius: 8 }}>{summary}</div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {items.map((n, i) => {
+              const isOpen = openIdx === i;
+              const color = dirColor(n.price_direction);
+              return (
+                <div key={i} style={{ background: "#161b22", borderRadius: 10, borderLeft: `3px solid ${color}`, padding: "10px 12px", cursor: "pointer" }} onClick={() => setOpenIdx(isOpen ? null : i)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ flex: 1, fontSize: 12, color: "#e6edf3", lineHeight: 1.4, fontWeight: 500 }}>{n.title}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, background: `${color}18`, border: `1px solid ${color}44`, borderRadius: 12, padding: "2px 8px", fontFamily: "'DM Mono', monospace", fontSize: 10, color, fontWeight: 700, whiteSpace: "nowrap" }}>
+                      <span>{dirArrow(n.price_direction)}</span><span>{n.impact_score}/10</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 10, color: "#8b949e" }}>
+                    <span>{n.source}{n.published_at && ` · ${timeAgo(n.published_at)}`}</span>
+                    <span style={{ color }}>{n.price_direction} {isOpen ? "▾" : "▸"}</span>
+                  </div>
+                  {isOpen && (
+                    <div style={{ marginTop: 8, padding: "8px 10px", background: "#0d1117", borderRadius: 6, fontSize: 11, color: "#c9d1d9", lineHeight: 1.5 }}>
+                      {n.impact_explanation}
+                      {n.url && (
+                        <a href={n.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ display: "block", marginTop: 6, color: "#58a6ff", fontSize: 10 }}>Read full article ↗</a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Metric explanations (tap-to-explain) ────────────────
+const METRIC_EXPLANATIONS = {
+  "Price":     { short: "What one share costs right now.", detail: "The last traded price. Goes up when more people want to buy; goes down when more people want to sell. By itself, price tells you nothing about whether a stock is cheap or expensive — compare with P/E and Market Cap." },
+  "5D Change": { short: "How much the price moved over the last 5 trading days.", detail: "Short-term momentum. Green = rising, red = falling. Useful to catch trends, but 5 days is noise for long-term investors. Don't buy or sell just because of a 5-day move." },
+  "Mkt Cap":   { short: "The total price tag of the whole company.", detail: "Market Cap = Share Price × Total Shares. Large cap (huge, stable), Mid cap (growing), Small cap (risky but high potential). A ₹100 share in a small company is very different from a ₹100 share in a giant." },
+  "P/E":       { short: "Is the stock expensive or cheap vs its earnings?", detail: "If P/E is 20, you pay ₹20 for every ₹1 the company earns per year. Lower can mean cheaper — but very low P/E sometimes signals trouble ahead. Typical healthy range: 10–25." },
+  "EPS":       { short: "How much profit the company makes per share.", detail: "Earnings Per Share = Net Profit ÷ Shares Outstanding. Rising EPS over time is a green flag. Compare EPS with the share price to understand P/E." },
+  "52W High":  { short: "The highest price this stock hit in the last year.", detail: "If the current price is close to the 52W high, momentum is strong — but the stock may be fully priced. Far below? Could be a bargain, or something is wrong — investigate why." },
+  "52W Low":   { short: "The lowest price this stock hit in the last year.", detail: "Shows how far the stock can fall. If the current price is near this level, be cautious and research what's dragging it down before buying." },
+  "Rel Vol":   { short: "Is trading unusually busy today?", detail: "Relative Volume compares today's volume to the average. >1.5 means unusual activity (news, earnings, rumors). <0.7 means a quiet day. High Rel Vol often precedes big moves." },
+};
+
 // ── Compare Table ───────────────────────────────────────
 function CompareTable({ data, ticker_a, ticker_b }) {
+  const [expanded, setExpanded] = useState(null);
   const parse = (s, f) => { const m = s?.match(new RegExp(`${f}: ([^\n]+)`)); return m ? m[1].trim() : "—"; };
   const sA = typeof data?.data_a?.stock === "string" ? data.data_a.stock : ""; const sB = typeof data?.data_b?.stock === "string" ? data.data_b.stock : "";
   const rows = [
@@ -254,20 +336,41 @@ function CompareTable({ data, ticker_a, ticker_b }) {
           <div key={t} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700 }}>{t}</div>
         ))}
       </div>
-      {rows.map((row, i) => (
-        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: i < rows.length - 1 ? "1px solid #21262d" : "none", background: i % 2 === 0 ? "#0d1117" : "#0a0f16" }}>
-          <div style={{ padding: "7px 10px", fontSize: 10, color: "#8b949e" }}>{row.label}</div>
-          {[row.a, row.b].map((val, j) => (
-            <div key={j} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3" }}>{val}</div>
-          ))}
-        </div>
-      ))}
+      {rows.map((row, i) => {
+        const isOpen = expanded === row.label;
+        const exp = METRIC_EXPLANATIONS[row.label];
+        return (
+          <div key={i} style={{ borderBottom: i < rows.length - 1 ? "1px solid #21262d" : "none" }}>
+            <div
+              onClick={() => setExpanded(isOpen ? null : row.label)}
+              title="Tap to explain"
+              style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: i % 2 === 0 ? "#0d1117" : "#0a0f16", cursor: exp ? "pointer" : "default" }}
+            >
+              <div style={{ padding: "7px 10px", fontSize: 10, color: isOpen ? "#f7c843" : "#8b949e", display: "flex", alignItems: "center", gap: 4 }}>
+                {row.label}
+                {exp && <span style={{ fontSize: 9, opacity: 0.6 }}>{isOpen ? "▾" : "ⓘ"}</span>}
+              </div>
+              {[row.a, row.b].map((val, j) => (
+                <div key={j} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3" }}>{val}</div>
+              ))}
+            </div>
+            {isOpen && exp && (
+              <div style={{ padding: "10px 14px", background: "#0a0f16", borderTop: "1px solid #21262d" }}>
+                <div style={{ fontSize: 12, color: "#f7c843", fontWeight: 600, marginBottom: 4 }}>{exp.short}</div>
+                <div style={{ fontSize: 11, color: "#c9d1d9", lineHeight: 1.55 }}>{exp.detail}</div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-const CustomTooltip = ({ active, payload }) => active && payload?.length
-  ? <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 8, padding: "8px 14px", fontSize: 13, color: "#e6edf3" }}>${payload[0].value.toLocaleString()}</div>
+const currencySymbol = type => type === "India" ? "₹" : "$";
+
+const CustomTooltip = ({ active, payload, symbol = "$" }) => active && payload?.length
+  ? <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: 8, padding: "8px 14px", fontSize: 13, color: "#e6edf3" }}>{symbol}{payload[0].value.toLocaleString()}</div>
   : null;
 
 // ── Stock Card ──────────────────────────────────────────
@@ -328,7 +431,7 @@ function MainChart({ stock }) {
           <span style={{ fontSize: 12, color: "#8b949e" }}>{stock.name}</span>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>${stock.price?.toLocaleString() ?? "—"}</div>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 20, color: "#e6edf3", fontWeight: 700 }}>{currencySymbol(stock.type)}{stock.price?.toLocaleString() ?? "—"}</div>
           <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}% today</div>
         </div>
       </div>
@@ -343,8 +446,8 @@ function MainChart({ stock }) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
             <XAxis dataKey="day" tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} interval={9} />
-            <YAxis tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `$${v.toLocaleString()}`} />
-            <Tooltip content={<CustomTooltip />} />
+            <YAxis tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `${currencySymbol(stock.type)}${v.toLocaleString()}`} />
+            <Tooltip content={<CustomTooltip symbol={currencySymbol(stock.type)} />} />
             <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={2} fill="url(#mainGrad)" dot={false} />
           </AreaChart>
         </ResponsiveContainer>
@@ -439,8 +542,9 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const [userState, setUserState] = useState(getUser());
-  const [showAuth, setShowAuth]   = useState(!getToken());
+  const devBypass = process.env.REACT_APP_DEV_BYPASS === "1";
+  const [userState, setUserState] = useState(devBypass ? { email: "dev@local" } : getUser());
+  const [showAuth, setShowAuth]   = useState(devBypass ? false : !getToken());
   const handleAuthSuccess = () => { setUserState(getUser()); setShowAuth(false); };
   const handleLogout      = () => { removeToken(); removeUser(); setUserState(null); setShowAuth(true); };
 
@@ -521,8 +625,27 @@ export default function App() {
     setSentimentLoading(prev => ({ ...prev, [ticker]: false }));
   }, []);
 
+  const [newsData, setNewsData]           = useState({});
+  const [newsLoading, setNewsLoading]     = useState({});
+  const fetchedNews = useRef(new Set());
+  const fetchNews = useCallback(async (ticker, name = "") => {
+    if (fetchedNews.current.has(ticker)) return;
+    fetchedNews.current.add(ticker);
+    setNewsLoading(prev => ({ ...prev, [ticker]: true }));
+    try {
+      const res  = await fetch(`${API_URL}/news/${ticker}?company=${encodeURIComponent(name)}`);
+      const data = await res.json();
+      setNewsData(prev => ({ ...prev, [ticker]: data }));
+    } catch {
+      fetchedNews.current.delete(ticker);
+      setNewsData(prev => ({ ...prev, [ticker]: null }));
+    }
+    setNewsLoading(prev => ({ ...prev, [ticker]: false }));
+  }, []);
+
   useEffect(() => { watchlist.forEach(s => fetchSentiment(s.ticker, s.name)); }, [watchlist, fetchSentiment]);
   useEffect(() => { fetchSentiment(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker, fetchSentiment]);
+  useEffect(() => { fetchNews(selectedStock.ticker, selectedStock.name); }, [selectedStock.ticker, fetchNews]);
 
   useEffect(() => {
     const poll = async () => {
@@ -704,6 +827,23 @@ export default function App() {
             style={{ background: "#f7c843", color: "#0d1117", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
             {compareLoading ? "..." : "Compare"}
           </button>
+          <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 }}>Quick picks</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {[
+              { label: "Reliance vs TCS",     a: "RELIANCE.NS",  b: "TCS.NS" },
+              { label: "HDFC vs ICICI",       a: "HDFCBANK.NS",  b: "ICICIBANK.NS" },
+              { label: "Infosys vs Wipro",    a: "INFY.NS",      b: "WIPRO.NS" },
+              { label: "AAPL vs MSFT",        a: "AAPL",         b: "MSFT" },
+              { label: "NVDA vs AMD",         a: "NVDA",         b: "AMD" },
+              { label: "BTC vs ETH",          a: "BTC",          b: "ETH" },
+            ].map(pick => (
+              <button key={pick.label} disabled={compareLoading}
+                onClick={() => { setCompareA(pick.a); setCompareB(pick.b); runComparison(pick.a, pick.b); }}
+                style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 14, padding: "5px 10px", fontSize: 11, color: "#c9d1d9", cursor: compareLoading ? "wait" : "pointer" }}>
+                {pick.label}
+              </button>
+            ))}
+          </div>
           {compareData && !compareData.error && (
             <CompareTable data={compareData} ticker_a={compareData.ticker_a} ticker_b={compareData.ticker_b} />
           )}
@@ -786,6 +926,11 @@ export default function App() {
             ticker={selectedStock.ticker}
             sentiment={sentiments[selectedStock.ticker] ?? null}
             loading={sentimentLoading[selectedStock.ticker] ?? false}
+          />
+          <NewsFeed
+            ticker={selectedStock.ticker}
+            news={newsData[selectedStock.ticker] ?? null}
+            loading={newsLoading[selectedStock.ticker] ?? false}
           />
         </>
       )}
