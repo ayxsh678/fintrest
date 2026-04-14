@@ -239,8 +239,17 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("proxyJSON request error [%s %s]: %w", method, path, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
+	// Pass 4xx errors (user/input errors) back to caller as-is so the
+	// client gets a meaningful message instead of "service unavailable".
+	if resp.StatusCode >= 500 {
 		return nil, fmt.Errorf("proxyJSON upstream error [%s %s]: status %d", method, path, resp.StatusCode)
+	}
+	if resp.StatusCode >= 400 {
+		var clientErr interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&clientErr); err == nil {
+			return clientErr, nil
+		}
+		return nil, fmt.Errorf("proxyJSON client error [%s %s]: status %d", method, path, resp.StatusCode)
 	}
 	var result interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
