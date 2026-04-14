@@ -41,6 +41,19 @@ const SUGGESTIONS = [
   "Compare AAPL vs MSFT",
 ];
 
+const MOBILE_TABS = [
+  { id: "market",    label: "Market",    icon: "📈" },
+  { id: "chat",      label: "Chat",      icon: "💬" },
+  { id: "watchlist", label: "Watchlist", icon: "⭐" },
+  { id: "more",      label: "More",      icon: "☰"  },
+];
+
+const MORE_SUB_TABS = [
+  { id: "compare",   label: "Compare"   },
+  { id: "portfolio", label: "Portfolio" },
+  { id: "alerts",    label: "Alerts"    },
+];
+
 const TYPE_STYLES = {
   Crypto: { bg: "#1a1a2e", color: "#a78bfa" },
   India:  { bg: "#1a2e1a", color: "#3fb950" },
@@ -828,7 +841,7 @@ export default function App() {
       {/* On mobile "more" tab: show sub-tabs so compare/portfolio/alerts are reachable */}
       {isMobile && mobileTab === "more" && (
         <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-          {[{ id: "compare", label: "Compare" }, { id: "portfolio", label: "Portfolio" }, { id: "alerts", label: "Alerts" }].map(({ id, label }) => (
+          {MORE_SUB_TABS.map(({ id, label }) => (
             <button key={id} onClick={() => setActiveTab(id)}
               style={{ flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 700, border: "1px solid", borderRadius: 8, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
                 background: activeTab === id ? "#f7c843" : "#161b22",
@@ -1072,19 +1085,14 @@ export default function App() {
                renderLeftPanelContent()}
             </div>
             <div style={{ display: "flex", borderTop: "1px solid #21262d", background: "#0d1117", padding: "10px 4px" }}>
-              {[
-                { id: "market",    label: "Market",    icon: "📈" },
-                { id: "chat",      label: "Chat",      icon: "💬" },
-                { id: "watchlist", label: "Watchlist", icon: "⭐" },
-                { id: "more",      label: "More",      icon: "☰"  },
-              ].map(({ id, label, icon }) => (
+              {MOBILE_TABS.map(({ id, label, icon }) => (
                 <button key={id}
                   onClick={() => {
                     setMobileTab(id);
                     // Default "more" to compare sub-tab when first opened
                     if (id === "more" && activeTab === "watchlist") setActiveTab("compare");
-                    // Fetch alerts when navigating to the more tab
-                    if (id === "more") fetchAlerts();
+                    // Only fetch alerts when actually transitioning into "more"
+                    if (id === "more" && mobileTab !== "more") fetchAlerts();
                   }}
                   style={{ flex: 1, background: "none", border: "none", color: mobileTab === id ? "#f7c843" : "#8b949e",
                     fontSize: 10, textTransform: "capitalize", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
