@@ -208,44 +208,64 @@ func detectSources(context string) []string {
 	return sources
 }
 
-func proxyGet(path string) (map[string]interface{}, error) {
-	resp, err := httpClient.Get(pythonURL() + path)
+// proxyJSON is the shared transport layer for all Python proxy calls.
+// It handles marshalling, the HTTP round-trip, status checking, and JSON
+// decoding into interface{} so any top-level shape (object, array, primitive)
+// is accepted. method must be "GET" or "POST".
+func proxyJSON(method, path string, body interface{}) (interface{}, error) {
+	var req *http.Request
+	var err error
+	if method == "GET" {
+		req, err = http.NewRequest("GET", pythonURL()+path, nil)
+	} else {
+		var payload []byte
+		payload, err = json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("proxyJSON marshal error: %w", err)
+		}
+		req, err = http.NewRequest("POST", pythonURL()+path, bytes.NewBuffer(payload))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("proxyGet request error [%s]: %w", path, err)
+		return nil, fmt.Errorf("proxyJSON build request error [%s %s]: %w", method, path, err)
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("proxyJSON request error [%s %s]: %w", method, path, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("proxyGet upstream error [%s]: status %d", path, resp.StatusCode)
+		return nil, fmt.Errorf("proxyJSON upstream error [%s %s]: status %d", method, path, resp.StatusCode)
 	}
-	var result map[string]interface{}
+	var result interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("proxyGet decode error [%s]: %w", path, err)
+		return nil, fmt.Errorf("proxyJSON decode error [%s %s]: %w", method, path, err)
 	}
 	return result, nil
 }
 
+func proxyGet(path string) (map[string]interface{}, error) {
+	raw, err := proxyJSON("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := raw.(map[string]interface{}); ok {
+		return m, nil
+	}
+	return nil, fmt.Errorf("proxyGet: unexpected response shape for %s", path)
+}
+
 func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
-	payload, err := json.Marshal(body)
+	raw, err := proxyJSON("POST", path, body)
 	if err != nil {
-		return nil, fmt.Errorf("proxyPost marshal error: %w", err)
+		return nil, err
 	}
-	resp, err := httpClient.Post(
-		pythonURL()+path, "application/json", bytes.NewBuffer(payload),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("proxyPost request error [%s]: %w", path, err)
+	if m, ok := raw.(map[string]interface{}); ok {
+		return m, nil
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("proxyPost upstream error [%s]: status %d", path, resp.StatusCode)
-	}
-
-	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("proxyPost decode error [%s]: %w", path, err)
-	}
-	return result, nil
+	return nil, fmt.Errorf("proxyPost: unexpected response shape for %s", path)
 }
 
 func proxyPostSlice(path string, body interface{}) ([]interface{}, error) {
@@ -555,6 +575,10 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+		if len(req.Tickers) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "tickers must be a non-empty array"})
+			return
+		}
 		result, err := proxyPost("/watchlist/enrich", req)
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Enrichment service unavailable"})
@@ -565,7 +589,7 @@ func main() {
 
 	// ── Session History ────────────────────────────────
 	r.GET("/session/:id/history", func(c *gin.Context) {
-		sid := c.Param("id")
+		sid := url.PathEscape(c.Param("id"))
 		result, err := proxyGet("/session/" + sid + "/history")
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Session service unavailable"})
