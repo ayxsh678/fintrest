@@ -1,7 +1,9 @@
 import logging
 import os
 import json
+import random
 import threading
+import time
 import requests
 from datetime import datetime, timedelta
 from cachetools import TTLCache
@@ -10,6 +12,22 @@ logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+
+MAX_RETRIES    = 3
+BASE_BACKOFF   = 1.0
+MAX_BACKOFF    = 6.0
+RETRY_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _sleep_backoff(attempt: int, retry_after: str | None = None) -> None:
+    if retry_after:
+        try:
+            time.sleep(min(float(retry_after), MAX_BACKOFF))
+            return
+        except ValueError:
+            pass
+    delay = min(BASE_BACKOFF * (2 ** attempt), MAX_BACKOFF)
+    time.sleep(delay + random.uniform(0, 0.25 * delay))
 
 # Bounded cache: max 200 tickers, 30 min TTL
 _cache: TTLCache = TTLCache(maxsize=200, ttl=30 * 60)
@@ -84,21 +102,40 @@ Headlines:
 
 Respond ONLY with the JSON object. No markdown, no explanation outside the JSON."""
 
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type":  "application/json",
+    }
+    payload = {
+        "model":       "llama-3.3-70b-versatile",
+        "messages":    [{"role": "user", "content": prompt}],
+        "max_tokens":  120,
+        "temperature": 0.1,
+    }
+
+    resp = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=15)
+        except requests.RequestException as e:
+            logger.warning("Groq sentiment network error for %s (attempt %d/%d): %s",
+                           ticker, attempt + 1, MAX_RETRIES, e)
+            if attempt < MAX_RETRIES - 1:
+                _sleep_backoff(attempt)
+                continue
+            return 50.0, "Neutral"
+
+        if resp.status_code == 200:
+            break
+        if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES - 1:
+            logger.warning("Groq sentiment returned %d for %s (attempt %d/%d) — retrying",
+                           resp.status_code, ticker, attempt + 1, MAX_RETRIES)
+            _sleep_backoff(attempt, resp.headers.get("Retry-After"))
+            continue
+        logger.warning("Groq sentiment failed for %s with status %d", ticker, resp.status_code)
+        return 50.0, "Neutral"
+
     try:
-        resp = requests.post(
-            GROQ_URL,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type":  "application/json",
-            },
-            json={
-                "model":       "llama-3.3-70b-versatile",
-                "messages":    [{"role": "user", "content": prompt}],
-                "max_tokens":  120,
-                "temperature": 0.1,
-            },
-            timeout=15,
-        )
         resp.raise_for_status()
         raw  = resp.json()["choices"][0]["message"]["content"].strip()
         raw  = raw.replace("```json", "").replace("```", "").strip()

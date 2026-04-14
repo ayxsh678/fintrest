@@ -1,8 +1,30 @@
+import logging
 import os
+import random
+import time
+
 import requests
+
+logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+
+MAX_RETRIES     = 3
+BASE_BACKOFF    = 1.0
+MAX_BACKOFF     = 8.0
+RETRY_STATUSES  = {429, 500, 502, 503, 504}
+
+
+def _sleep_backoff(attempt: int, retry_after: str | None = None) -> None:
+    if retry_after:
+        try:
+            time.sleep(min(float(retry_after), MAX_BACKOFF))
+            return
+        except ValueError:
+            pass
+    delay = min(BASE_BACKOFF * (2 ** attempt), MAX_BACKOFF)
+    time.sleep(delay + random.uniform(0, 0.25 * delay))
 
 SYSTEM_PROMPT = """You are an expert financial analyst delivering insights to traders and investors.
 
@@ -27,37 +49,64 @@ def _call_groq(messages: list[dict], max_tokens: int = 1024,
     """Single shared Groq call — all functions route through here."""
     if not GROQ_API_KEY:
         return "Error: GROQ_API_KEY not set"
-    try:
-        response = requests.post(
-            GROQ_URL,
-            headers={
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-            timeout=30
-        )
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
 
-    except requests.exceptions.Timeout:
-        return "Error: Request to Groq timed out. Please try again."
-    except requests.exceptions.HTTPError as e:
-        status = e.response.status_code
-        if status == 429:
-            return "Error: Groq rate limit hit. Please wait a moment and retry."
-        elif status == 401:
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    last_error = "Error: Groq request failed. Please try again."
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
+        except requests.exceptions.Timeout:
+            logger.warning("Groq timeout on attempt %d/%d", attempt + 1, MAX_RETRIES)
+            last_error = "Error: Request to Groq timed out. Please try again."
+            if attempt < MAX_RETRIES - 1:
+                _sleep_backoff(attempt)
+                continue
+            return last_error
+        except requests.exceptions.ConnectionError as e:
+            logger.warning("Groq connection error on attempt %d/%d: %s", attempt + 1, MAX_RETRIES, e)
+            last_error = "Error: Could not reach Groq. Please try again."
+            if attempt < MAX_RETRIES - 1:
+                _sleep_backoff(attempt)
+                continue
+            return last_error
+        except requests.exceptions.RequestException as e:
+            return f"Error: {e}"
+
+        status = response.status_code
+        if status == 200:
+            try:
+                return response.json()["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, ValueError):
+                return "Error: Unexpected response format from Groq."
+
+        if status in RETRY_STATUSES and attempt < MAX_RETRIES - 1:
+            logger.warning("Groq returned %d on attempt %d/%d — retrying", status, attempt + 1, MAX_RETRIES)
+            _sleep_backoff(attempt, response.headers.get("Retry-After"))
+            last_error = (
+                "Error: Groq rate limit hit. Please wait a moment and retry."
+                if status == 429 else f"Error: Groq API returned {status}"
+            )
+            continue
+
+        if status == 401:
             return "Error: Invalid GROQ_API_KEY."
+        if status == 429:
+            return "Error: Groq is busy right now. Please try again in a moment."
+        if status in RETRY_STATUSES:
+            return "Error: Groq is temporarily unavailable. Please try again shortly."
         return f"Error: Groq API returned {status}"
-    except (KeyError, IndexError):
-        return "Error: Unexpected response format from Groq."
-    except Exception as e:
-        return f"Error: {str(e)}"
+
+    return last_error
 
 
 def generate_response(question: str, context: str,
