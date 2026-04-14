@@ -169,7 +169,7 @@ function TradingViewChart({ ticker, height = 220 }) {
       DOGE: "BINANCE:DOGEUSDT",
     };
     if (map[t]) return map[t];
-    if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
+    if (t.endsWith(".NS")) return "BSE:" + t.replace(".NS", "");
     if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
     return t.includes(":") ? t : `NASDAQ:${t}`;
   };
