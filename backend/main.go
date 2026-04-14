@@ -216,15 +216,15 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 	var req *http.Request
 	var err error
 	switch method {
-	case "GET":
-		req, err = http.NewRequest("GET", pythonURL()+path, nil)
-	case "POST":
+	case http.MethodGet:
+		req, err = http.NewRequest(http.MethodGet, pythonURL()+path, nil)
+	case http.MethodPost:
 		var payload []byte
 		payload, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("proxyJSON marshal error: %w", err)
 		}
-		req, err = http.NewRequest("POST", pythonURL()+path, bytes.NewBuffer(payload))
+		req, err = http.NewRequest(http.MethodPost, pythonURL()+path, bytes.NewBuffer(payload))
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -250,7 +250,7 @@ func proxyJSON(method, path string, body interface{}) (interface{}, error) {
 }
 
 func proxyGet(path string) (map[string]interface{}, error) {
-	raw, err := proxyJSON("GET", path, nil)
+	raw, err := proxyJSON(http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func proxyGet(path string) (map[string]interface{}, error) {
 }
 
 func proxyPost(path string, body interface{}) (map[string]interface{}, error) {
-	raw, err := proxyJSON("POST", path, body)
+	raw, err := proxyJSON(http.MethodPost, path, body)
 	if err != nil {
 		return nil, err
 	}
