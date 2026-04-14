@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+import threading
 import requests
 from datetime import datetime, timedelta
 from cachetools import TTLCache
@@ -12,10 +13,12 @@ GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
 
 # Bounded cache: max 200 tickers, 30 min TTL
 _cache: TTLCache = TTLCache(maxsize=200, ttl=30 * 60)
+_cache_lock = threading.Lock()
 
 
 def _is_cached(ticker: str) -> bool:
-    return ticker in _cache
+    with _cache_lock:
+        return ticker in _cache
 
 
 def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
@@ -131,8 +134,9 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
     """
     ticker = ticker.upper().strip()
 
-    if _is_cached(ticker):
-        return dict(_cache[ticker])
+    with _cache_lock:
+        if ticker in _cache:
+            return dict(_cache[ticker])
 
     headlines    = _fetch_headlines(ticker, company_name)
     score, label = _score_with_groq(ticker, headlines)
@@ -145,5 +149,6 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
         "headlines":      headlines[:5],
     }
 
-    _cache[ticker] = dict(result)
+    with _cache_lock:
+        _cache[ticker] = dict(result)
     return result

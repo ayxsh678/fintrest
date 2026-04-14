@@ -66,7 +66,7 @@ func handleRegister(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[register] New user registered: %s (id=%d)", req.Email, userID)
+	log.Printf("[register] New user registered: %s (id=%d)", redactEmail(req.Email), userID)
 	c.JSON(http.StatusCreated, gin.H{"token": token, "email": req.Email, "user_id": userID})
 }
 
@@ -123,6 +123,26 @@ func generateToken(userID int, email string) (string, error) {
 		},
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecret)
+}
+
+func redactEmail(email string) string {
+	at := strings.Index(email, "@")
+	if at == -1 {
+		if len(email) <= 3 {
+			return "***"
+		}
+		return email[:3] + "..."
+	}
+	local := email[:at]
+	domain := email[at+1:]
+	if len(local) <= 1 {
+		return "***@" + domain
+	}
+	visible := 3
+	if len(local) < visible {
+		visible = 1
+	}
+	return local[:visible] + "...@" + domain
 }
 
 func AuthMiddleware() gin.HandlerFunc {
