@@ -532,20 +532,14 @@ function AuthModal({ onSuccess }) {
 
 // ── Main App ────────────────────────────────────────────
 export default function App() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 900);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [mobileTab, setMobileTab] = useState("market");
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 900);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  const [activeTab, setActiveTab] = useState("watchlist");
-
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  const [activeTab, setActiveTab] = useState("watchlist");
 
   const devBypass = process.env.REACT_APP_DEV_BYPASS === "1";
   const [userState, setUserState] = useState(devBypass ? { email: "dev@local" } : getUser());
@@ -831,7 +825,22 @@ export default function App() {
 
   const renderLeftPanelContent = () => (
     <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-      {activeTab === "watchlist" && (
+      {/* On mobile "more" tab: show sub-tabs so compare/portfolio/alerts are reachable */}
+      {isMobile && mobileTab === "more" && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          {[{ id: "compare", label: "Compare" }, { id: "portfolio", label: "Portfolio" }, { id: "alerts", label: "Alerts" }].map(({ id, label }) => (
+            <button key={id} onClick={() => setActiveTab(id)}
+              style={{ flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 700, border: "1px solid", borderRadius: 8, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                background: activeTab === id ? "#f7c843" : "#161b22",
+                color: activeTab === id ? "#0d1117" : "#8b949e",
+                borderColor: activeTab === id ? "#f7c843" : "#21262d" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* On mobile "watchlist" tab always shows watchlist; on desktop follows activeTab */}
+      {(isMobile ? mobileTab === "watchlist" : activeTab === "watchlist") && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {watchlist.map(stock => (
             <StockCard key={stock.ticker} stock={stock}
@@ -844,7 +853,7 @@ export default function App() {
         </div>
       )}
 
-      {activeTab === "compare" && (
+      {activeTab === "compare" && (!isMobile || mobileTab === "more") && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <input value={compareA} onChange={e => setCompareA(e.target.value.toUpperCase())} placeholder="Ticker A (e.g. RELIANCE.NS)"
             style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", fontSize: 14, color: "#e6edf3", fontFamily: "'DM Mono', monospace" }} />
@@ -877,7 +886,7 @@ export default function App() {
         </div>
       )}
 
-      {activeTab === "portfolio" && (
+      {activeTab === "portfolio" && (!isMobile || mobileTab === "more") && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", gap: 6 }}>
             <input value={portfolioInput} onChange={e => setPortfolioInput(e.target.value)}
@@ -900,10 +909,33 @@ export default function App() {
               {portfolioLoading ? "Analyzing..." : "Analyze Portfolio"}
             </button>
           )}
+          {portfolioData?.error && (
+            <div style={{ fontSize: 12, color: "#f85149" }}>{portfolioData.error}</div>
+          )}
+          {portfolioData && !portfolioData.error && (
+            <div style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>Analysis</div>
+              <div style={{ fontSize: 13, color: "#e6edf3", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{portfolioData.summary}</div>
+              {portfolioData.breakdown && Object.keys(portfolioData.breakdown).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>Holdings</div>
+                  {Object.entries(portfolioData.breakdown).map(([ticker, info]) => {
+                    const firstLine = typeof info === "string" ? info.split("\n").find(l => l.includes("Current Price")) || info.split("\n")[0] : "";
+                    return (
+                      <div key={ticker} style={{ background: "#0d1117", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843" }}>{ticker}</span>
+                        <span style={{ fontSize: 11, color: "#8b949e" }}>{firstLine.replace(/^.*?:\s*/, "")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {activeTab === "alerts" && (
+      {activeTab === "alerts" && (!isMobile || mobileTab === "more") && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <input value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="Ticker"
             style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 8, padding: "10px 12px", color: "#e6edf3" }} />
@@ -1007,7 +1039,7 @@ export default function App() {
           ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
         `}</style>
 
-        <header style={{ borderBottom: "1px solid #21262d", padding: "12px 32px", display: "flex", justifyContent: "space-between", background: "#0d1117" }}>
+        <header style={{ borderBottom: "1px solid #21262d", padding: isMobile ? "10px 16px" : "12px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0d1117" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ background: "#f7c843", padding: "4px 8px", borderRadius: 8, color: "#0d1117" }}>💹</div>
             <span style={{ fontWeight: 700, fontSize: 18 }}>Fintrest</span>
@@ -1039,11 +1071,25 @@ export default function App() {
                mobileTab === "chat"     ? renderChatContent()    :
                renderLeftPanelContent()}
             </div>
-            <div style={{ display: "flex", borderTop: "1px solid #21262d", background: "#0d1117", padding: 10 }}>
-              {["market", "chat", "watchlist", "more"].map(t => (
-                <button key={t} onClick={() => setMobileTab(t)}
-                  style={{ flex: 1, background: "none", border: "none", color: mobileTab === t ? "#f7c843" : "#8b949e", fontSize: 11, textTransform: "capitalize" }}>
-                  {t}
+            <div style={{ display: "flex", borderTop: "1px solid #21262d", background: "#0d1117", padding: "10px 4px" }}>
+              {[
+                { id: "market",    label: "Market",    icon: "📈" },
+                { id: "chat",      label: "Chat",      icon: "💬" },
+                { id: "watchlist", label: "Watchlist", icon: "⭐" },
+                { id: "more",      label: "More",      icon: "☰"  },
+              ].map(({ id, label, icon }) => (
+                <button key={id}
+                  onClick={() => {
+                    setMobileTab(id);
+                    // Default "more" to compare sub-tab when first opened
+                    if (id === "more" && activeTab === "watchlist") setActiveTab("compare");
+                    // Fetch alerts when navigating to the more tab
+                    if (id === "more") fetchAlerts();
+                  }}
+                  style={{ flex: 1, background: "none", border: "none", color: mobileTab === id ? "#f7c843" : "#8b949e",
+                    fontSize: 10, textTransform: "capitalize", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                  <span style={{ fontSize: 16 }}>{icon}</span>
+                  <span>{label}</span>
                 </button>
               ))}
             </div>
