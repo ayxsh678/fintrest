@@ -223,7 +223,7 @@ function TradingViewChart({ ticker, height = 220 }) {
 
 // ── Compare Table ───────────────────────────────────────
 function CompareTable({ data, ticker_a, ticker_b }) {
-  const parse = (s, f) => { const m = s?.match(new RegExp(`${f}:\s*\$?([^\n]+)`)); return m ? m[1].trim() : "—"; };
+  const parse = (s, f) => { const m = s?.match(new RegExp(`${f}: ([^\n]+)`)); return m ? m[1].trim() : "—"; };
   const sA = typeof data?.data_a?.stock === "string" ? data.data_a.stock : ""; const sB = typeof data?.data_b?.stock === "string" ? data.data_b.stock : "";
   const rows = [
     { label: "Price",     a: parse(sA, "Current Price"),   b: parse(sB, "Current Price")   },
