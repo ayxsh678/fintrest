@@ -199,7 +199,9 @@ def format_as_stock_data(ticker: str, quote: dict, symbol: str = "$",
                         label: str = "") -> str:
     def fmt_price(v):  return f"{symbol}{v:,.2f}" if isinstance(v, (int, float)) else "N/A"
     def fmt_val(v):    return f"{v:.2f}" if isinstance(v, float) else (str(v) if v is not None else "N/A")
-    def fmt_volume(v): return f"{int(v):,}" if v is not None else "N/A"
+    # Volume/rel-vol use "—" to distinguish "no upstream source has the data"
+    # from generic "N/A" on fundamentals.
+    def fmt_volume(v): return f"{int(v):,}" if v is not None else "—"
 
     pct     = quote.get("change_pct")
     mkt_cap = quote.get("mkt_cap")
@@ -208,7 +210,7 @@ def format_as_stock_data(ticker: str, quote: dict, symbol: str = "$",
 
     fmt_mktcap = f"{symbol}{int(mkt_cap):,}" if mkt_cap is not None else "N/A"
     fmt_pct    = f"{pct:.2f}%" if pct is not None else "N/A"
-    fmt_relvol = f"{rel_vol}x" if rel_vol is not None else "N/A"
+    fmt_relvol = f"{rel_vol}x" if rel_vol is not None else "—"
     header     = f"Stock: {name} ({ticker}){(' — ' + label) if label else ''}"
 
     return (

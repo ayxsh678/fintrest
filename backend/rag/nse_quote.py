@@ -11,6 +11,7 @@ from threading import Lock
 from datetime import datetime, timedelta
 
 from rag.alpha_vantage import get_avg_volume as av_get_avg_volume
+from rag.eodhd import get_avg_volume as eodhd_get_avg_volume
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,16 @@ def _get_avg_volume(session: requests.Session, symbol: str) -> float | None:
                 logger.info("Using Alpha Vantage avg volume for %s: %.0f", symbol, avg)
         except Exception as exc:  # noqa: BLE001 — defensive, never let fallback crash quote path
             logger.warning("Alpha Vantage avg volume failed for %s: %s", symbol, exc)
+
+    if avg is None:
+        # Second fallback: EODHD covers NSE/BSE daily history where AV's free
+        # tier doesn't. Gated behind EODHD_API_KEY so it's a no-op when unset.
+        try:
+            avg = eodhd_get_avg_volume(symbol + ".NS")
+            if avg is not None:
+                logger.info("Using EODHD avg volume for %s: %.0f", symbol, avg)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("EODHD avg volume failed for %s: %s", symbol, exc)
 
     with _vol_lock:
         if avg is not None:
@@ -209,9 +220,12 @@ def get_nse_quote(ticker: str) -> dict | None:
 
 
 def format_as_stock_data(ticker: str, quote: dict) -> str:
+    # Volume-derived fields use "—" (em dash) when no upstream source could
+    # supply the data; other fields stay "N/A" to preserve existing semantics
+    # for fundamentals that genuinely aren't reported.
     def fmt_price(v): return f"₹{v:,}" if v is not None else "N/A"
     def fmt_val(v):   return f"{v:.2f}" if isinstance(v, float) else str(v) if v is not None else "N/A"
-    def fmt_volume(v): return f"{int(v):,}" if v is not None else "N/A"
+    def fmt_volume(v): return f"{int(v):,}" if v is not None else "—"
 
     pct       = quote.get("change_pct")
     mkt_cap   = quote.get("mkt_cap")
@@ -220,7 +234,7 @@ def format_as_stock_data(ticker: str, quote: dict) -> str:
 
     fmt_mktcap  = f"₹{mkt_cap:,}" if mkt_cap is not None else "N/A"
     fmt_pct     = f"{pct:.2f}%"   if pct     is not None else "N/A"
-    fmt_relvol  = f"{rel_vol}x"   if rel_vol is not None else "N/A"
+    fmt_relvol  = f"{rel_vol}x"   if rel_vol is not None else "—"
 
     return (
         f"Stock: {quote.get('long_name', ticker)} ({ticker}) — NSE (live)\n"
