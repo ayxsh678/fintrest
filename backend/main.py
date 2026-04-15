@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from rag.retriever import build_context, get_stock_data, get_financial_news
+from rag.retriever import build_context, get_stock_data, get_financial_news, get_ohlc_yf
 from rag.portfolio import build_portfolio_context, extract_tickers_from_query, get_portfolio_data
 from rag.comparison import build_comparison_context, extract_comparison_tickers, get_comparison_data
 from rag.memory import create_session, get_history, append_to_history, clear_session
@@ -271,13 +271,20 @@ def chart(ticker: str, days: int = 180):
         raise HTTPException(status_code=400, detail="Ticker cannot be empty")
     if not 5 <= days <= 730:
         raise HTTPException(status_code=400, detail="days must be between 5 and 730")
+    # Try EODHD first (covers NSE/BSE cleanly, paid plans cover US too),
+    # then fall back to yfinance's /history (works even when .info 401s on
+    # Render IPs because the chart endpoint doesn't need the crumb cookie).
+    source = "eodhd"
     rows = get_ohlc(ticker_clean, days=days)
+    if not rows:
+        rows = get_ohlc_yf(ticker_clean, days=days)
+        source = "yfinance" if rows else source
     if not rows:
         # 200 with empty series + explicit ok:false so the frontend can render
         # a graceful fallback without treating it as an HTTP failure (which
         # would trip the Go gateway's 503 path and confuse error handling).
-        return {"ticker": ticker_clean, "ok": False, "rows": []}
-    return {"ticker": ticker_clean, "ok": True, "rows": rows}
+        return {"ticker": ticker_clean, "ok": False, "rows": [], "source": None}
+    return {"ticker": ticker_clean, "ok": True, "rows": rows, "source": source}
 
 
 # ── Sentiment ──────────────────────────────────────────
