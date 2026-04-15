@@ -175,6 +175,40 @@ const clearSession = async () => {
 // underscore; keep length sane.
 const TV_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
 
+// Widget CDN (s.tradingview.com). www.tradingview.com/widgetembed/ serves a
+// generic demo page that ignores the ?symbol= param, which is why earlier
+// charts all defaulted to AAPL.
+const TV_EMBED_BASE = "https://s.tradingview.com/widgetembed/";
+
+// Symbol-independent params shared across every embed. Only `symbol` differs
+// per ticker, so keeping these factored out makes tweaks (theme, toolbar,
+// tracking) a one-line change.
+const TV_BASE_PARAMS = {
+  interval:            "D",
+  theme:               "dark",
+  style:               "1",
+  locale:              "en",
+  hide_side_toolbar:   "1",
+  hide_top_toolbar:    "0",
+  hide_legend:         "0",
+  save_image:          "0",
+  toolbar_bg:          "#0d1117",
+  withdateranges:      "0",
+  allow_symbol_change: "0",
+  enable_publishing:   "0",
+  utm_source:          "fintrest",
+  utm_medium:          "widget",
+};
+
+// Only attach a title= tooltip when the value is long enough to plausibly
+// truncate. Short values (e.g. "AAPL", "1.25x") don't need a tooltip and
+// the extra attribute just adds noise for screen readers.
+function maybeTitle(v, threshold = 8) {
+  if (typeof v !== "string" && typeof v !== "number") return undefined;
+  const s = String(v);
+  return s.length > threshold ? s : undefined;
+}
+
 function tvSymbol(t) {
   const map = {
     BTC:  "BINANCE:BTCUSDT",
@@ -205,29 +239,8 @@ function TradingViewChart({ ticker, height = 220 }) {
     return <TradingViewFallback ticker={ticker} height={height} reason="Chart unavailable for this symbol" />;
   }
 
-  // Use TradingView's widget CDN (s.tradingview.com). The www.tradingview.com
-  // /widgetembed/ path serves a generic demo page that ignores the symbol
-  // query param and defaults to AAPL, which is why earlier charts all showed
-  // Apple Inc. The s.tradingview.com endpoint is what TradingView's own
-  // "Get embed code" tool generates and honors query-param symbols.
-  const params = new URLSearchParams({
-    symbol:             tvSymbol(ticker),
-    interval:           "D",
-    theme:              "dark",
-    style:              "1",
-    locale:             "en",
-    hide_side_toolbar:  "1",
-    hide_top_toolbar:   "0",
-    hide_legend:        "0",
-    save_image:         "0",
-    toolbar_bg:         "#0d1117",
-    withdateranges:     "0",
-    allow_symbol_change: "0",
-    enable_publishing:  "0",
-    utm_source:         "fintrest",
-    utm_medium:         "widget",
-  });
-  const src = `https://s.tradingview.com/widgetembed/?${params.toString()}`;
+  const params = new URLSearchParams({ ...TV_BASE_PARAMS, symbol: tvSymbol(ticker) });
+  const src = `${TV_EMBED_BASE}?${params.toString()}`;
 
   return (
     <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117" }}>
@@ -346,7 +359,7 @@ function CompareTable({ data, ticker_a, ticker_b }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "#161b22", borderBottom: "1px solid #21262d" }}>
         <div style={{ padding: "10px 10px", fontSize: 10, color: "#8b949e", minWidth: 0 }} />
         {[ticker_a, ticker_b].map(t => (
-          <div key={t} title={t} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t}</div>
+          <div key={t} title={maybeTitle(t)} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t}</div>
         ))}
       </div>
       {rows.map((row, i) => {
@@ -364,7 +377,7 @@ function CompareTable({ data, ticker_a, ticker_b }) {
                 {exp && <span style={{ fontSize: 9, opacity: 0.6 }}>{isOpen ? "▾" : "ⓘ"}</span>}
               </div>
               {[row.a, row.b].map((val, j) => (
-                <div key={j} title={val} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
+                <div key={j} title={maybeTitle(val)} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
               ))}
             </div>
             {isOpen && exp && (
@@ -396,10 +409,10 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stock.ticker}</div>
+            <div title={maybeTitle(stock.ticker)} style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stock.ticker}</div>
             {stock.type && <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5, padding: "1px 6px", borderRadius: 4, background: ts.bg, color: ts.color, flexShrink: 0 }}>{stock.type}</span>}
           </div>
-          <div title={stock.name} style={{ fontSize: 11, color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stock.name}</div>
+          <div title={maybeTitle(stock.name)} style={{ fontSize: 11, color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stock.name}</div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>
@@ -1058,8 +1071,8 @@ export default function App() {
             <span style={{ fontWeight: 700, fontSize: 18 }}>Fintrest</span>
           </div>
           <div style={{ display: "flex", gap: isMobile ? 6 : 10, flexShrink: 0 }}>
-            <button onClick={handleNewChat} aria-label="New chat" style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: isMobile ? "6px 10px" : "6px 15px", borderRadius: 20, whiteSpace: "nowrap" }}>{isMobile ? "+" : "+ New"}</button>
-            {userState && <button onClick={handleLogout} aria-label="Sign out" style={{ color: "#f85149", background: "none", border: "none", padding: isMobile ? "6px 6px" : "6px 10px", whiteSpace: "nowrap" }}>{isMobile ? "Exit" : "Sign Out"}</button>}
+            <button onClick={handleNewChat} aria-label="New chat" title="New chat" style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: isMobile ? "6px 10px" : "6px 15px", borderRadius: 20, whiteSpace: "nowrap" }}>{isMobile ? "+" : "+ New"}</button>
+            {userState && <button onClick={handleLogout} aria-label="Sign out" title="Sign out" style={{ color: "#f85149", background: "none", border: "none", padding: isMobile ? "6px 6px" : "6px 10px", whiteSpace: "nowrap" }}>{isMobile ? "Exit" : "Sign Out"}</button>}
           </div>
         </header>
 
