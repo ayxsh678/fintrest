@@ -74,19 +74,31 @@ def _get_avg_volume(session: requests.Session, symbol: str) -> float | None:
             timeout=10,
         )
         if resp.status_code == 200:
-            records = (resp.json() or {}).get("data") or []
-            volumes = [float(r["CH_TOT_TRADED_QTY"]) for r in records if r.get("CH_TOT_TRADED_QTY")]
+            payload = resp.json()
+            records = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(records, list):
+                logger.info("NSE history: unexpected shape for %s; will try Alpha Vantage", symbol)
+                records = []
+            volumes = [
+                float(r["CH_TOT_TRADED_QTY"])
+                for r in records
+                if isinstance(r, dict) and r.get("CH_TOT_TRADED_QTY")
+            ]
             if volumes:
                 avg = sum(volumes) / len(volumes)
+            else:
+                logger.info("NSE history: empty volume series for %s; will try Alpha Vantage", symbol)
         else:
             logger.info("NSE history status %s for %s; will try Alpha Vantage", resp.status_code, symbol)
     except requests.RequestException as exc:
         logger.warning("NSE history request failed for %s: %s", symbol, exc)
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
         logger.warning("NSE history parse error for %s: %s", symbol, exc)
 
     if avg is None:
         try:
+            # Re-append .NS so alpha_vantage._av_symbol maps it to the .BSE form
+            # it expects; passing the bare NSE symbol would bypass that mapping.
             avg = av_get_avg_volume(symbol + ".NS")
             if avg is not None:
                 logger.info("Using Alpha Vantage avg volume for %s: %.0f", symbol, avg)

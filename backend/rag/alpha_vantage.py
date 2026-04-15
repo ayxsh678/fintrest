@@ -3,10 +3,13 @@
 Only provides price + change — not a full replacement for yfinance, just
 enough to keep the app functional when Yahoo Finance refuses connections.
 """
+import logging
 import os
 import requests
 from cachetools import TTLCache
 from threading import Lock
+
+logger = logging.getLogger(__name__)
 
 AV_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 AV_URL = "https://www.alphavantage.co/query"
@@ -73,14 +76,30 @@ def get_avg_volume(ticker: str, days: int = 30) -> float | None:
             timeout=15,
         )
         resp.raise_for_status()
-        series = (resp.json() or {}).get("Time Series (Daily)") or {}
+        payload = resp.json()
+        if not isinstance(payload, dict):
+            logger.warning("AV avg-volume: unexpected payload type %s for %s", type(payload).__name__, ticker)
+            return None
+        # AV returns {"Note": ...} (rate-limited) or {"Error Message": ...} on failure.
+        if "Note" in payload or "Error Message" in payload:
+            logger.warning("AV avg-volume: API message for %s: %s", ticker,
+                           payload.get("Note") or payload.get("Error Message"))
+            return None
+        series = payload.get("Time Series (Daily)") or {}
+        if not isinstance(series, dict):
+            logger.warning("AV avg-volume: series not a dict for %s", ticker)
+            return None
         volumes = [
             float(v["5. volume"])
             for _, v in sorted(series.items(), reverse=True)[:days]
-            if v.get("5. volume")
+            if isinstance(v, dict) and v.get("5. volume")
         ]
-        return sum(volumes) / len(volumes) if volumes else None
-    except (requests.RequestException, ValueError, KeyError):
+        if not volumes:
+            logger.info("AV avg-volume: empty series for %s", ticker)
+            return None
+        return sum(volumes) / len(volumes)
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
+        logger.warning("AV avg-volume failed for %s: %s", ticker, exc)
         return None
 
 
