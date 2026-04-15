@@ -22,6 +22,11 @@ _av_lock  = Lock()
 _ov_cache = TTLCache(maxsize=200, ttl=86_400)
 _ov_lock  = Lock()
 
+# Avg-volume cache shared for both direct callers (US tickers via get_quote)
+# and indirect ones (NSE tickers falling back through nse_quote._get_avg_volume).
+_vol_cache = TTLCache(maxsize=200, ttl=14_400)
+_vol_lock  = Lock()
+
 
 def _av_symbol(ticker: str) -> str:
     t = ticker.upper()
@@ -30,35 +35,43 @@ def _av_symbol(ticker: str) -> str:
     return t
 
 
+def _to_float(x):
+    """Parse AV's stringly-typed numeric fields (handles None, '', 'None', '-')."""
+    try:
+        if x in (None, "", "None", "-"):
+            return None
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_quote(ticker: str) -> dict | None:
-    """Return {price, previous_close, change_pct} or None."""
+    """Return {price, previous_close, change_pct, ...} or None."""
     if not AV_KEY:
         return None
 
+    cache_key = _av_symbol(ticker)
     with _av_lock:
-        if ticker in _av_cache:
-            return _av_cache[ticker]
+        if cache_key in _av_cache:
+            return _av_cache[cache_key]
 
     try:
         resp = requests.get(
             AV_URL,
-            params={"function": "GLOBAL_QUOTE", "symbol": _av_symbol(ticker), "apikey": AV_KEY},
+            params={"function": "GLOBAL_QUOTE", "symbol": cache_key, "apikey": AV_KEY},
             timeout=10,
         )
         resp.raise_for_status()
         data = (resp.json() or {}).get("Global Quote") or {}
-        price_raw = data.get("05. price")
-        prev_raw  = data.get("08. previous close")
-        pct_raw   = (data.get("10. change percent") or "").rstrip("%")
-        if not price_raw:
+        price_val = _to_float(data.get("05. price"))
+        if price_val is None:
             return None
-        price_val = float(price_raw)
-        vol_raw = data.get("06. volume")
+        pct_raw = (data.get("10. change percent") or "").rstrip("%")
         quote = {
             "price": price_val,
-            "previous_close": float(prev_raw) if prev_raw else None,
-            "change_pct": float(pct_raw) if pct_raw else None,
-            "today_vol": _to_float(vol_raw),
+            "previous_close": _to_float(data.get("08. previous close")),
+            "change_pct":     _to_float(pct_raw),
+            "today_vol":      _to_float(data.get("06. volume")),
         }
     except (requests.RequestException, ValueError, KeyError):
         return None
@@ -82,17 +95,8 @@ def get_quote(ticker: str) -> dict | None:
         quote["rel_vol"] = None
 
     with _av_lock:
-        _av_cache[ticker] = quote
+        _av_cache[cache_key] = quote
     return quote
-
-
-def _to_float(x):
-    try:
-        if x in (None, "", "None", "-"):
-            return None
-        return float(x)
-    except (TypeError, ValueError):
-        return None
 
 
 def get_overview(ticker: str) -> dict | None:
@@ -102,13 +106,14 @@ def get_overview(ticker: str) -> dict | None:
     """
     if not AV_KEY:
         return None
+    cache_key = _av_symbol(ticker)
     with _ov_lock:
-        if ticker in _ov_cache:
-            return _ov_cache[ticker]
+        if cache_key in _ov_cache:
+            return _ov_cache[cache_key]
     try:
         resp = requests.get(
             AV_URL,
-            params={"function": "OVERVIEW", "symbol": _av_symbol(ticker), "apikey": AV_KEY},
+            params={"function": "OVERVIEW", "symbol": cache_key, "apikey": AV_KEY},
             timeout=15,
         )
         resp.raise_for_status()
@@ -133,7 +138,7 @@ def get_overview(ticker: str) -> dict | None:
         return None
 
     with _ov_lock:
-        _ov_cache[ticker] = overview
+        _ov_cache[cache_key] = overview
     return overview
 
 
@@ -141,6 +146,10 @@ def get_avg_volume(ticker: str, days: int = 30) -> float | None:
     """Return mean daily volume over the last `days` trading sessions, or None."""
     if not AV_KEY:
         return None
+    cache_key = f"{_av_symbol(ticker)}:{days}"
+    with _vol_lock:
+        if cache_key in _vol_cache:
+            return _vol_cache[cache_key]
     try:
         resp = requests.get(
             AV_URL,
@@ -167,17 +176,23 @@ def get_avg_volume(ticker: str, days: int = 30) -> float | None:
             logger.warning("AV avg-volume: series not a dict for %s", ticker)
             return None
         volumes = [
-            float(v["5. volume"])
+            v_parsed
             for _, v in sorted(series.items(), reverse=True)[:days]
-            if isinstance(v, dict) and v.get("5. volume")
+            if isinstance(v, dict)
+            for v_parsed in [_to_float(v.get("5. volume"))]
+            if v_parsed is not None
         ]
         if not volumes:
             logger.info("AV avg-volume: empty series for %s", ticker)
             return None
-        return sum(volumes) / len(volumes)
+        avg = sum(volumes) / len(volumes)
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
         logger.warning("AV avg-volume failed for %s: %s", ticker, exc)
         return None
+
+    with _vol_lock:
+        _vol_cache[cache_key] = avg
+    return avg
 
 
 def format_as_stock_data(ticker: str, quote: dict, symbol: str = "$",
