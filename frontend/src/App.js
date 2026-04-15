@@ -205,25 +205,29 @@ function TradingViewChart({ ticker, height = 220 }) {
     return <TradingViewFallback ticker={ticker} height={height} reason="Chart unavailable for this symbol" />;
   }
 
-  // TradingView's public /widgetembed/ page renders a self-contained chart
-  // keyed off query params. Using it via <iframe> sidesteps the auto-init
-  // script's caching behavior (repeated <script src="..."> tags with the
-  // same URL don't re-execute, which was making the second+ chart on a
-  // page silently inherit the first chart's symbol — e.g. showing Apple
-  // Inc. for RELIANCE.NS). Each iframe is independent.
+  // Use TradingView's widget CDN (s.tradingview.com). The www.tradingview.com
+  // /widgetembed/ path serves a generic demo page that ignores the symbol
+  // query param and defaults to AAPL, which is why earlier charts all showed
+  // Apple Inc. The s.tradingview.com endpoint is what TradingView's own
+  // "Get embed code" tool generates and honors query-param symbols.
   const params = new URLSearchParams({
-    symbol:        tvSymbol(ticker),
-    interval:      "D",
-    theme:         "dark",
-    style:         "1",
-    locale:        "en",
-    hide_top_toolbar: "0",
-    hide_legend:   "0",
-    save_image:    "0",
-    toolbar_bg:    "#0d1117",
-    withdateranges: "0",
+    symbol:             tvSymbol(ticker),
+    interval:           "D",
+    theme:              "dark",
+    style:              "1",
+    locale:             "en",
+    hide_side_toolbar:  "1",
+    hide_top_toolbar:   "0",
+    hide_legend:        "0",
+    save_image:         "0",
+    toolbar_bg:         "#0d1117",
+    withdateranges:     "0",
+    allow_symbol_change: "0",
+    enable_publishing:  "0",
+    utm_source:         "fintrest",
+    utm_medium:         "widget",
   });
-  const src = `https://www.tradingview.com/widgetembed/?${params.toString()}`;
+  const src = `https://s.tradingview.com/widgetembed/?${params.toString()}`;
 
   return (
     <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117" }}>
@@ -340,9 +344,9 @@ function CompareTable({ data, ticker_a, ticker_b }) {
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 14, overflow: "hidden" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "#161b22", borderBottom: "1px solid #21262d" }}>
-        <div style={{ padding: "10px 10px", fontSize: 10, color: "#8b949e" }} />
+        <div style={{ padding: "10px 10px", fontSize: 10, color: "#8b949e", minWidth: 0 }} />
         {[ticker_a, ticker_b].map(t => (
-          <div key={t} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700 }}>{t}</div>
+          <div key={t} title={t} style={{ padding: "10px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843", fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t}</div>
         ))}
       </div>
       {rows.map((row, i) => {
@@ -360,7 +364,7 @@ function CompareTable({ data, ticker_a, ticker_b }) {
                 {exp && <span style={{ fontSize: 9, opacity: 0.6 }}>{isOpen ? "▾" : "ⓘ"}</span>}
               </div>
               {[row.a, row.b].map((val, j) => (
-                <div key={j} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3" }}>{val}</div>
+                <div key={j} title={val} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
               ))}
             </div>
             {isOpen && exp && (
@@ -389,15 +393,15 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
   const ts   = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
   return (
     <div onClick={onClick} style={{ background: isSelected ? "#161b22" : "#0d1117", border: `1px solid ${isSelected ? "#f7c843" : "#21262d"}`, borderRadius: 14, padding: "16px 18px", cursor: "pointer", transition: "all 0.2s" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{stock.ticker}</div>
-            {stock.type && <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5, padding: "1px 6px", borderRadius: 4, background: ts.bg, color: ts.color }}>{stock.type}</span>}
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stock.ticker}</div>
+            {stock.type && <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5, padding: "1px 6px", borderRadius: 4, background: ts.bg, color: ts.color, flexShrink: 0 }}>{stock.type}</span>}
           </div>
-          <div style={{ fontSize: 11, color: "#8b949e" }}>{stock.name}</div>
+          <div title={stock.name} style={{ fontSize: 11, color: "#8b949e", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stock.name}</div>
         </div>
-        <div style={{ textAlign: "right" }}>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>
             {stock.price == null ? "—" : stock.type === "India" ? `₹${stock.price.toLocaleString()}` : stock.type === "Crypto" ? `$${stock.price.toLocaleString()}` : `$${stock.price.toLocaleString()}`}
           </div>
@@ -1053,9 +1057,9 @@ export default function App() {
             <div style={{ background: "#f7c843", padding: "4px 8px", borderRadius: 8, color: "#0d1117" }}>💹</div>
             <span style={{ fontWeight: 700, fontSize: 18 }}>Fintrest</span>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={handleNewChat} style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: "6px 15px", borderRadius: 20 }}>+ New</button>
-            {userState && <button onClick={handleLogout} style={{ color: "#f85149", background: "none", border: "none" }}>Sign Out</button>}
+          <div style={{ display: "flex", gap: isMobile ? 6 : 10, flexShrink: 0 }}>
+            <button onClick={handleNewChat} aria-label="New chat" style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: isMobile ? "6px 10px" : "6px 15px", borderRadius: 20, whiteSpace: "nowrap" }}>{isMobile ? "+" : "+ New"}</button>
+            {userState && <button onClick={handleLogout} aria-label="Sign out" style={{ color: "#f85149", background: "none", border: "none", padding: isMobile ? "6px 6px" : "6px 10px", whiteSpace: "nowrap" }}>{isMobile ? "Exit" : "Sign Out"}</button>}
           </div>
         </header>
 
