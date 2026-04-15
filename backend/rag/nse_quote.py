@@ -193,7 +193,6 @@ def get_nse_quote(ticker: str) -> dict | None:
         # today_vol we can't compute rel_vol — so as a last resort, fall back
         # to the latest daily volume from EODHD's OHLC series. Not live, but
         # a close-enough proxy to keep the Rel Vol cell populated.
-        avg_vol = _get_avg_volume(session, symbol)
         if today_vol is None:
             try:
                 ohlc = eodhd_get_ohlc(symbol + ".NS", days=5)
@@ -202,9 +201,15 @@ def get_nse_quote(ticker: str) -> dict | None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("EODHD latest-volume fallback failed for %s: %s", symbol, exc)
 
+        # Only pay the avg-volume cost once we have a today_vol to divide
+        # by — otherwise rel_vol is unreachable regardless and the lookup
+        # would waste an upstream call per compare.
+        avg_vol = None
         rel_vol = None
-        if today_vol is not None and avg_vol is not None and avg_vol > 0:
-            rel_vol = round(today_vol / avg_vol, 2)
+        if today_vol is not None:
+            avg_vol = _get_avg_volume(session, symbol)
+            if avg_vol is not None and avg_vol > 0:
+                rel_vol = round(today_vol / avg_vol, 2)
 
         quote = {
             "price": price,

@@ -24,6 +24,10 @@ _ov_cache = TTLCache(maxsize=200, ttl=86_400)
 # retries the same throttled ticker on the next request and burns more
 # quota. 5 min is short enough to recover after AV's per-minute window
 # but long enough to dampen rapid re-renders.
+#
+# Value is a small dict {"kind": "throttle"|"empty"|"error", "msg": str} so
+# callers (and future log/metric plumbing) can tell a transient rate-limit
+# from a hard failure without re-parsing the upstream response.
 _ov_neg   = TTLCache(maxsize=400, ttl=300)
 _ov_lock  = Lock()
 _OV_MISS  = object()
@@ -119,9 +123,9 @@ def get_overview(ticker: str) -> dict | None:
         if _ov_neg.get(cache_key, _OV_MISS) is not _OV_MISS:
             return None  # recent failure; stay off AV to preserve quota
 
-    def _remember_miss():
+    def _remember_miss(kind: str, msg: str = "") -> None:
         with _ov_lock:
-            _ov_neg[cache_key] = None
+            _ov_neg[cache_key] = {"kind": kind, "msg": msg}
 
     try:
         resp = requests.get(
@@ -133,12 +137,19 @@ def get_overview(ticker: str) -> dict | None:
         payload = resp.json()
         if not isinstance(payload, dict) or not payload:
             logger.info("AV overview: empty/unexpected payload for %s", ticker)
-            _remember_miss()
+            _remember_miss("empty")
             return None
-        if "Note" in payload or "Error Message" in payload or "Information" in payload:
-            logger.warning("AV overview: API message for %s: %s", ticker,
-                           payload.get("Note") or payload.get("Error Message") or payload.get("Information"))
-            _remember_miss()
+        # "Note"/"Information" = rate-limit throttle (transient); "Error Message"
+        # = hard failure (bad symbol, not covered). Tag them separately so the
+        # neg-cache entry reflects why we gave up, not just that we did.
+        throttle_msg = payload.get("Note") or payload.get("Information")
+        if throttle_msg:
+            logger.warning("AV overview throttled for %s: %s", ticker, throttle_msg)
+            _remember_miss("throttle", throttle_msg)
+            return None
+        if "Error Message" in payload:
+            logger.warning("AV overview error for %s: %s", ticker, payload["Error Message"])
+            _remember_miss("error", payload["Error Message"])
             return None
         overview = {
             "pe":         _to_float(payload.get("PERatio")),
@@ -150,7 +161,7 @@ def get_overview(ticker: str) -> dict | None:
         }
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
         logger.warning("AV overview failed for %s: %s", ticker, exc)
-        _remember_miss()
+        _remember_miss("error", str(exc))
         return None
 
     with _ov_lock:
