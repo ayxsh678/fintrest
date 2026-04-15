@@ -274,17 +274,24 @@ def chart(ticker: str, days: int = 180):
     # Try EODHD first (covers NSE/BSE cleanly, paid plans cover US too),
     # then fall back to yfinance's /history (works even when .info 401s on
     # Render IPs because the chart endpoint doesn't need the crumb cookie).
-    source = "eodhd"
     rows = get_ohlc(ticker_clean, days=days)
-    if not rows:
-        rows = get_ohlc_yf(ticker_clean, days=days)
-        source = "yfinance" if rows else source
-    if not rows:
-        # 200 with empty series + explicit ok:false so the frontend can render
-        # a graceful fallback without treating it as an HTTP failure (which
-        # would trip the Go gateway's 503 path and confuse error handling).
-        return {"ticker": ticker_clean, "ok": False, "rows": [], "source": None}
-    return {"ticker": ticker_clean, "ok": True, "rows": rows, "source": source}
+    if rows:
+        return {"ticker": ticker_clean, "ok": True, "rows": rows, "source": "eodhd"}
+
+    rows = get_ohlc_yf(ticker_clean, days=days)
+    if rows:
+        return {"ticker": ticker_clean, "ok": True, "rows": rows, "source": "yfinance"}
+
+    # Both providers came up empty. Log which ones failed so ops can tell
+    # whether EODHD is quota-exhausted, yfinance is crumb-blocked, or both.
+    logger.debug(
+        "chart: no rows for %s (days=%s); providers tried: eodhd, yfinance",
+        ticker_clean, days,
+    )
+    # 200 with empty series + explicit ok:false so the frontend can render
+    # a graceful fallback without treating it as an HTTP failure (which
+    # would trip the Go gateway's 503 path and confuse error handling).
+    return {"ticker": ticker_clean, "ok": False, "rows": [], "source": None}
 
 
 # ── Sentiment ──────────────────────────────────────────
