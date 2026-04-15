@@ -205,25 +205,29 @@ function TradingViewChart({ ticker, height = 220 }) {
     return <TradingViewFallback ticker={ticker} height={height} reason="Chart unavailable for this symbol" />;
   }
 
-  // TradingView's public /widgetembed/ page renders a self-contained chart
-  // keyed off query params. Using it via <iframe> sidesteps the auto-init
-  // script's caching behavior (repeated <script src="..."> tags with the
-  // same URL don't re-execute, which was making the second+ chart on a
-  // page silently inherit the first chart's symbol — e.g. showing Apple
-  // Inc. for RELIANCE.NS). Each iframe is independent.
+  // Use TradingView's widget CDN (s.tradingview.com). The www.tradingview.com
+  // /widgetembed/ path serves a generic demo page that ignores the symbol
+  // query param and defaults to AAPL, which is why earlier charts all showed
+  // Apple Inc. The s.tradingview.com endpoint is what TradingView's own
+  // "Get embed code" tool generates and honors query-param symbols.
   const params = new URLSearchParams({
-    symbol:        tvSymbol(ticker),
-    interval:      "D",
-    theme:         "dark",
-    style:         "1",
-    locale:        "en",
-    hide_top_toolbar: "0",
-    hide_legend:   "0",
-    save_image:    "0",
-    toolbar_bg:    "#0d1117",
-    withdateranges: "0",
+    symbol:             tvSymbol(ticker),
+    interval:           "D",
+    theme:              "dark",
+    style:              "1",
+    locale:             "en",
+    hide_side_toolbar:  "1",
+    hide_top_toolbar:   "0",
+    hide_legend:        "0",
+    save_image:         "0",
+    toolbar_bg:         "#0d1117",
+    withdateranges:     "0",
+    allow_symbol_change: "0",
+    enable_publishing:  "0",
+    utm_source:         "fintrest",
+    utm_medium:         "widget",
   });
-  const src = `https://www.tradingview.com/widgetembed/?${params.toString()}`;
+  const src = `https://s.tradingview.com/widgetembed/?${params.toString()}`;
 
   return (
     <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117" }}>
