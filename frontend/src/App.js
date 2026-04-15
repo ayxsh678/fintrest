@@ -173,32 +173,7 @@ const clearSession = async () => {
 // Reject obvious junk before handing it to the embed (which would show an
 // empty "Invalid symbol" box). Allow letters, digits, dot, dash, colon,
 // underscore; keep length sane.
-const TV_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
-
-// Widget CDN (s.tradingview.com). www.tradingview.com/widgetembed/ serves a
-// generic demo page that ignores the ?symbol= param, which is why earlier
-// charts all defaulted to AAPL.
-const TV_EMBED_BASE = "https://s.tradingview.com/widgetembed/";
-
-// Symbol-independent params shared across every embed. Only `symbol` differs
-// per ticker, so keeping these factored out makes tweaks (theme, toolbar,
-// tracking) a one-line change.
-const TV_BASE_PARAMS = {
-  interval:            "D",
-  theme:               "dark",
-  style:               "1",
-  locale:              "en",
-  hide_side_toolbar:   "1",
-  hide_top_toolbar:    "0",
-  hide_legend:         "0",
-  save_image:          "0",
-  toolbar_bg:          "#0d1117",
-  withdateranges:      "0",
-  allow_symbol_change: "0",
-  enable_publishing:   "0",
-  utm_source:          "fintrest",
-  utm_medium:          "widget",
-};
+const CHART_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
 
 // Only attach a title= tooltip when the value is long enough to plausibly
 // truncate. Short values (e.g. "AAPL", "1.25x") don't need a tooltip and
@@ -209,21 +184,7 @@ function maybeTitle(v, threshold = 8) {
   return s.length > threshold ? s : undefined;
 }
 
-function tvSymbol(t) {
-  const map = {
-    BTC:  "BINANCE:BTCUSDT",
-    ETH:  "BINANCE:ETHUSDT",
-    SOL:  "BINANCE:SOLUSDT",
-    BNB:  "BINANCE:BNBUSDT",
-    DOGE: "BINANCE:DOGEUSDT",
-  };
-  if (map[t]) return map[t];
-  if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
-  if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
-  return t.includes(":") ? t : `NASDAQ:${t}`;
-}
-
-function TradingViewFallback({ ticker, height, reason }) {
+function ChartFallback({ ticker, height, reason }) {
   return (
     <div style={{ height, width: "100%", borderRadius: 12, background: "#161b22", border: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6, padding: 12, textAlign: "center" }}>
       <div style={{ fontSize: 13, color: "#f7c843", fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{ticker || "—"}</div>
@@ -232,27 +193,118 @@ function TradingViewFallback({ ticker, height, reason }) {
   );
 }
 
+// Self-hosted replacement for the TradingView widget. Pulls OHLC from our
+// /chart/{ticker} endpoint (backed by EODHD) and renders with
+// lightweight-charts. This sidesteps TradingView's licensing modal on
+// embedded NSE/BSE charts and keeps all chart data on our own trust boundary.
+//
+// Dynamic import so the ~150KB charts library doesn't land in the initial
+// bundle for users who never open a compare view.
 function TradingViewChart({ ticker, height = 220 }) {
-  const isValid = typeof ticker === "string" && TV_VALID_TICKER.test(ticker);
+  const containerRef = useRef(null);
+  const chartRef     = useRef(null);
+  const [state, setState] = useState({ status: "loading", reason: "" });
 
-  if (!isValid) {
-    return <TradingViewFallback ticker={ticker} height={height} reason="Chart unavailable for this symbol" />;
+  const isValid = typeof ticker === "string" && CHART_VALID_TICKER.test(ticker);
+
+  useEffect(() => {
+    if (!isValid) {
+      setState({ status: "error", reason: "Chart unavailable for this symbol" });
+      return;
+    }
+    let cancelled = false;
+    let chart;
+    let resizeObserver;
+
+    (async () => {
+      try {
+        const { createChart, ColorType } = await import("lightweight-charts");
+        const res = await fetch(`${API_URL}/chart/${encodeURIComponent(ticker)}?days=180`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const payload = await res.json();
+        if (cancelled) return;
+        if (!payload.ok || !Array.isArray(payload.rows) || payload.rows.length === 0) {
+          setState({ status: "error", reason: "No chart data available" });
+          return;
+        }
+        const el = containerRef.current;
+        if (!el) return;
+
+        chart = createChart(el, {
+          width:  el.clientWidth,
+          height,
+          layout: {
+            background: { type: ColorType.Solid, color: "#0d1117" },
+            textColor:  "#8b949e",
+            fontFamily: "'DM Mono', monospace",
+          },
+          grid: {
+            vertLines: { color: "#161b22" },
+            horzLines: { color: "#161b22" },
+          },
+          rightPriceScale: { borderColor: "#21262d" },
+          timeScale:       { borderColor: "#21262d", timeVisible: false, secondsVisible: false },
+          crosshair:       { mode: 1 },
+        });
+        chartRef.current = chart;
+
+        const series = chart.addCandlestickSeries({
+          upColor:       "#3fb950",
+          downColor:     "#f85149",
+          borderUpColor: "#3fb950",
+          borderDownColor: "#f85149",
+          wickUpColor:   "#3fb950",
+          wickDownColor: "#f85149",
+        });
+        series.setData(payload.rows.map(r => ({
+          time:  r.time,
+          open:  r.open,
+          high:  r.high,
+          low:   r.low,
+          close: r.close,
+        })));
+        chart.timeScale().fitContent();
+        setState({ status: "ok", reason: "" });
+
+        if (typeof ResizeObserver !== "undefined") {
+          resizeObserver = new ResizeObserver(entries => {
+            const w = entries[0]?.contentRect?.width;
+            if (w && chartRef.current) chartRef.current.applyOptions({ width: w });
+          });
+          resizeObserver.observe(el);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setState({ status: "error", reason: "Chart unavailable" });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (resizeObserver) resizeObserver.disconnect();
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
+    };
+  }, [ticker, height, isValid]);
+
+  if (state.status === "error") {
+    return <ChartFallback ticker={ticker} height={height} reason={state.reason} />;
   }
 
-  const params = new URLSearchParams({ ...TV_BASE_PARAMS, symbol: tvSymbol(ticker) });
-  const src = `${TV_EMBED_BASE}?${params.toString()}`;
-
   return (
-    <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117" }}>
-      <iframe
-        title={`TradingView chart ${ticker}`}
-        src={src}
-        style={{ width: "100%", height: "100%", border: 0 }}
-        loading="lazy"
-        referrerPolicy="no-referrer-when-downgrade"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-        allow="fullscreen"
-      />
+    <div style={{ position: "relative", height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117", border: "1px solid #21262d" }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div style={{ position: "absolute", top: 8, left: 10, fontSize: 11, color: "#8b949e", fontFamily: "'DM Mono', monospace", pointerEvents: "none" }}>
+        {ticker}
+      </div>
+      {state.status === "loading" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#8b949e", fontSize: 11 }}>
+          Loading chart…
+        </div>
+      )}
     </div>
   );
 }

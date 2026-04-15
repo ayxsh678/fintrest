@@ -508,6 +508,33 @@ func main() {
 		c.JSON(http.StatusOK, getStockData(ticker))
 	})
 
+	// ── Chart (OHLC) ───────────────────────────────────
+	// Backs the self-hosted lightweight-charts component (replaces the
+	// TradingView widget for NSE/BSE where TV shows a licensing modal).
+	r.GET("/chart/:ticker", func(c *gin.Context) {
+		ticker := strings.ToUpper(strings.TrimSpace(c.Param("ticker")))
+		if ticker == "" || len(ticker) > 20 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticker"})
+			return
+		}
+		path := "/chart/" + url.PathEscape(ticker)
+		if days := c.Query("days"); days != "" {
+			path += "?days=" + url.QueryEscape(days)
+		}
+		resp, err := httpClient.Get(pythonURL() + path)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Chart service unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+		var result interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode chart data"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+	})
+
 	// ── Sentiment ──────────────────────────────────────
 	r.GET("/sentiment/:ticker", func(c *gin.Context) {
 		ticker  := strings.ToUpper(c.Param("ticker"))
