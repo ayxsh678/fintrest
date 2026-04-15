@@ -18,9 +18,16 @@ logger = logging.getLogger(__name__)
 EODHD_KEY = os.getenv("EODHD_API_KEY")
 EODHD_URL = "https://eodhd.com/api/eod/{symbol}"
 
-# 4h TTL matches the other avg-volume caches.
+# 4h TTL matches the other avg-volume caches. Negative results (None) are
+# cached with a shorter 1h TTL so consistently-failing tickers don't burn
+# through the free-tier quota, but recover faster than genuine hits if the
+# upstream issue clears.
 _vol_cache = TTLCache(maxsize=200, ttl=14_400)
+_neg_cache = TTLCache(maxsize=400, ttl=3_600)
 _vol_lock  = Lock()
+
+# Sentinel used to distinguish "cached miss" from "not in cache yet".
+_MISS = object()
 
 
 def _eodhd_symbol(ticker: str) -> str:
@@ -45,6 +52,12 @@ def get_avg_volume(ticker: str, days: int = 30) -> float | None:
     with _vol_lock:
         if cache_key in _vol_cache:
             return _vol_cache[cache_key]
+        if _neg_cache.get(cache_key, _MISS) is not _MISS:
+            return None  # recently-failed; don't re-hit the API
+
+    def _remember_miss():
+        with _vol_lock:
+            _neg_cache[cache_key] = None
 
     to_dt   = datetime.now()
     from_dt = to_dt - timedelta(days=days * 2)  # 2x to absorb weekends/holidays
@@ -61,23 +74,27 @@ def get_avg_volume(ticker: str, days: int = 30) -> float | None:
         )
         if resp.status_code != 200:
             logger.info("EODHD avg-volume: status %s for %s", resp.status_code, ticker)
+            _remember_miss()
             return None
         payload = resp.json()
         if not isinstance(payload, list):
             logger.warning("EODHD avg-volume: unexpected payload type %s for %s",
                            type(payload).__name__, ticker)
+            _remember_miss()
             return None
-        volumes = [
-            float(r["volume"])
-            for r in payload[-days:]
-            if isinstance(r, dict) and r.get("volume")
-        ]
+        # Defensive sort by date so we don't rely on EODHD's ordering; slice
+        # the most-recent `days` rows from the end.
+        rows = [r for r in payload if isinstance(r, dict) and r.get("volume")]
+        rows.sort(key=lambda r: r.get("date") or "")
+        volumes = [float(r["volume"]) for r in rows[-days:]]
         if not volumes:
             logger.info("EODHD avg-volume: empty series for %s", ticker)
+            _remember_miss()
             return None
         avg = sum(volumes) / len(volumes)
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
         logger.warning("EODHD avg-volume failed for %s: %s", ticker, exc)
+        _remember_miss()
         return None
 
     with _vol_lock:
