@@ -45,6 +45,25 @@ taketoday_lock = Lock()
 ohlc_lock      = Lock()
 
 
+# Map a requested day-window to the smallest yfinance `period` string that
+# comfortably covers it — we overshoot a little so weekends/holidays don't
+# leave the chart sparse at the tail. Sorted ascending; first threshold
+# whose ceiling is >= days wins.
+_YF_PERIOD_THRESHOLDS = [
+    (60,  "3mo"),
+    (180, "6mo"),
+    (365, "1y"),
+]
+_YF_PERIOD_FALLBACK = "2y"
+
+
+def _yf_period_for(days: int) -> str:
+    for ceiling, period in _YF_PERIOD_THRESHOLDS:
+        if days <= ceiling:
+            return period
+    return _YF_PERIOD_FALLBACK
+
+
 def get_ohlc_yf(ticker: str, days: int = 180) -> list[dict] | None:
     """yfinance-backed OHLC fallback when EODHD is unavailable / out of plan.
 
@@ -59,10 +78,7 @@ def get_ohlc_yf(ticker: str, days: int = 180) -> list[dict] | None:
         if cache_key in ohlc_cache:
             return ohlc_cache[cache_key]
     try:
-        # Map our days window to yfinance's period strings; overshoot a
-        # little so non-trading-day gaps don't leave the chart sparse.
-        period = "2y" if days > 365 else ("1y" if days > 180 else ("6mo" if days > 60 else "3mo"))
-        hist = yf.Ticker(ticker).history(period=period)
+        hist = yf.Ticker(ticker).history(period=_yf_period_for(days))
         if hist is None or hist.empty:
             return None
         rows = []
