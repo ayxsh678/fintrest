@@ -174,6 +174,9 @@ const clearSession = async () => {
 // empty "Invalid symbol" box). Allow letters, digits, dot, dash, colon,
 // underscore; keep length sane.
 const TV_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
+// Single source of truth for the "fill the host" sizing used by both the
+// TradingView wrapper div and its internal widget slot.
+const TV_FILL_STYLE = "height:100%;width:100%;";
 
 function tvSymbol(t) {
   const map = {
@@ -204,15 +207,21 @@ function TradingViewChart({ ticker, height = 220 }) {
 
   useEffect(() => {
     if (!isValid || !ref.current) return;
+    const host = ref.current;
 
-    while (ref.current.firstChild) {
-      ref.current.removeChild(ref.current.firstChild);
-    }
+    // TradingView's embed-widget-advanced-chart.js expects this exact DOM
+    // structure. Without the .tradingview-widget-container wrapper and the
+    // .tradingview-widget-container__widget sibling, the widget degrades
+    // and may render a hard-coded default symbol (seen as Apple Inc. even
+    // for NSE:* tickers).
+    const wrap = document.createElement("div");
+    wrap.className = "tradingview-widget-container";
+    wrap.style.cssText = TV_FILL_STYLE;
 
-    const container = document.createElement("div");
-    container.style.height = "100%";
-    container.style.width  = "100%";
-    ref.current.appendChild(container);
+    const slot = document.createElement("div");
+    slot.className = "tradingview-widget-container__widget";
+    slot.style.cssText = TV_FILL_STYLE;
+    wrap.appendChild(slot);
 
     const s    = document.createElement("script");
     s.src      = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -234,20 +243,25 @@ function TradingViewChart({ ticker, height = 220 }) {
       gridColor:           "rgba(33,38,45,1)",
     });
     // Guards against network/script failures: if the widget script errors
-    // out (blocker, offline, CSP), swap in the fallback card instead of
-    // leaving an empty pane.
+    // out (blocker, offline, CSP), swap in a fallback message card instead
+    // of leaving an empty pane. Tracked separately from wrap so cleanup
+    // can remove the exact node it added.
+    let fallback = null;
     s.onerror = () => {
-      if (!ref.current) return;
-      ref.current.innerHTML = "";
-      const msg = document.createElement("div");
-      msg.style.cssText = "height:100%;width:100%;display:flex;align-items:center;justify-content:center;color:#8b949e;font-size:11px;";
-      msg.textContent = "Chart unavailable";
-      ref.current.appendChild(msg);
+      if (wrap.parentNode === host) host.removeChild(wrap);
+      fallback = document.createElement("div");
+      fallback.style.cssText = `${TV_FILL_STYLE}display:flex;align-items:center;justify-content:center;color:#8b949e;font-size:11px;`;
+      fallback.textContent = "Chart unavailable";
+      host.appendChild(fallback);
     };
-    ref.current.appendChild(s);
+    wrap.appendChild(s);
+    host.appendChild(wrap);
 
+    // Targeted cleanup: only remove the nodes this effect added, so future
+    // sibling markup inside `host` is left untouched.
     return () => {
-      if (ref.current) ref.current.innerHTML = "";
+      if (wrap.parentNode === host) host.removeChild(wrap);
+      if (fallback && fallback.parentNode === host) host.removeChild(fallback);
     };
   }, [ticker, isValid]);
 
