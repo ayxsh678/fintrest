@@ -4,13 +4,21 @@ NSE's quote-equity endpoint needs a browser User-Agent and a cookie from
 the main page before it responds. We prime the session once per process
 and reuse it.
 """
+import logging
 import requests
 from cachetools import TTLCache
 from threading import Lock
 from datetime import datetime, timedelta
 
+logger = logging.getLogger(__name__)
+
 _nse_cache = TTLCache(maxsize=100, ttl=300)
 _nse_lock  = Lock()
+
+# Separate cache for 30-day average volume: changes slowly, so a 4-hour
+# TTL avoids hammering the NSE history endpoint on every quote request.
+_vol_cache = TTLCache(maxsize=100, ttl=14_400)
+_vol_lock  = Lock()
 
 _session: requests.Session | None = None
 _session_lock = Lock()
@@ -40,7 +48,11 @@ def _get_session() -> requests.Session | None:
 
 
 def _get_avg_volume(session: requests.Session, symbol: str) -> float | None:
-    """Fetch ~30 trading days of history and return the average daily volume."""
+    """Return the mean daily volume over ~30 trading days, with per-symbol caching."""
+    with _vol_lock:
+        if symbol in _vol_cache:
+            return _vol_cache[symbol]
+
     to_dt   = datetime.now()
     from_dt = to_dt - timedelta(days=45)  # 45 calendar days ≈ 30 trading days
     try:
@@ -58,9 +70,18 @@ def _get_avg_volume(session: requests.Session, symbol: str) -> float | None:
             return None
         records = (resp.json() or {}).get("data") or []
         volumes = [float(r["CH_TOT_TRADED_QTY"]) for r in records if r.get("CH_TOT_TRADED_QTY")]
-        return sum(volumes) / len(volumes) if volumes else None
-    except (requests.RequestException, ValueError, KeyError, ZeroDivisionError):
+        avg = sum(volumes) / len(volumes) if volumes else None
+    except requests.RequestException as exc:
+        logger.warning("NSE history request failed for %s: %s", symbol, exc)
         return None
+    except (ValueError, KeyError) as exc:
+        logger.warning("NSE history parse error for %s: %s", symbol, exc)
+        return None
+
+    with _vol_lock:
+        if avg is not None:
+            _vol_cache[symbol] = avg
+    return avg
 
 
 def _strip_suffix(ticker: str) -> str:
@@ -71,7 +92,7 @@ def _strip_suffix(ticker: str) -> str:
 
 
 def get_nse_quote(ticker: str) -> dict | None:
-    """Return {price, previous_close, change_pct, week_high, week_low} or None."""
+    """Return quote dict or None on failure."""
     with _nse_lock:
         if ticker in _nse_cache:
             return _nse_cache[ticker]
@@ -93,8 +114,8 @@ def get_nse_quote(ticker: str) -> dict | None:
         price_info = data.get("priceInfo") or {}
         if not price_info:
             return None
-        meta         = data.get("metadata")     or {}
-        security     = data.get("securityInfo") or {}
+        meta     = data.get("metadata")     or {}
+        security = data.get("securityInfo") or {}
 
         try:
             price = float(price_info.get("lastPrice"))
@@ -119,12 +140,15 @@ def get_nse_quote(ticker: str) -> dict | None:
         except (TypeError, ValueError):
             mkt_cap = None
 
-        # Relative volume = today's volume ÷ 30-day average volume
+        # Relative volume = today's volume ÷ 30-day average volume.
+        # Strip thousands separators before conversion in case the API returns "1,234,567".
         try:
-            today_vol = float(price_info.get("totalTradedVolume"))
+            raw_vol = price_info.get("totalTradedVolume")
+            today_vol = float(str(raw_vol).replace(",", "")) if raw_vol is not None else None
         except (TypeError, ValueError):
             today_vol = None
 
+        avg_vol = None
         rel_vol = None
         if today_vol is not None:
             avg_vol = _get_avg_volume(session, symbol)
@@ -142,6 +166,7 @@ def get_nse_quote(ticker: str) -> dict | None:
             "eps": eps,
             "mkt_cap": mkt_cap,
             "today_vol": today_vol,
+            "avg_vol": avg_vol,
             "rel_vol": rel_vol,
         }
         if quote["price"] is None:
@@ -157,16 +182,16 @@ def get_nse_quote(ticker: str) -> dict | None:
 def format_as_stock_data(ticker: str, quote: dict) -> str:
     def fmt_price(v): return f"₹{v:,}" if v is not None else "N/A"
     def fmt_val(v):   return f"{v:.2f}" if isinstance(v, float) else str(v) if v is not None else "N/A"
+    def fmt_volume(v): return f"{int(v):,}" if v is not None else "N/A"
 
     pct       = quote.get("change_pct")
     mkt_cap   = quote.get("mkt_cap")
-    today_vol = quote.get("today_vol")
+    avg_vol   = quote.get("avg_vol")
     rel_vol   = quote.get("rel_vol")
 
-    fmt_mktcap  = f"₹{mkt_cap:,}"          if mkt_cap   is not None else "N/A"
-    fmt_pct     = f"{pct:.2f}%"            if pct       is not None else "N/A"
-    fmt_vol     = f"{int(today_vol):,}"    if today_vol is not None else "N/A"
-    fmt_relvol  = f"{rel_vol}x"            if rel_vol   is not None else "N/A"
+    fmt_mktcap  = f"₹{mkt_cap:,}" if mkt_cap is not None else "N/A"
+    fmt_pct     = f"{pct:.2f}%"   if pct     is not None else "N/A"
+    fmt_relvol  = f"{rel_vol}x"   if rel_vol is not None else "N/A"
 
     return (
         f"Stock: {quote.get('long_name', ticker)} ({ticker}) — NSE (live)\n"
@@ -178,7 +203,7 @@ def format_as_stock_data(ticker: str, quote: dict) -> str:
         f"Market Cap: {fmt_mktcap}\n"
         f"EPS: {fmt_val(quote.get('eps'))}\n"
         f"5-Day Change: {fmt_pct}\n"
-        f"Latest Volume: {fmt_vol}\n"
-        f"30D Avg Volume: N/A\n"
+        f"Latest Volume: {fmt_volume(quote.get('today_vol'))}\n"
+        f"30D Avg Volume: {fmt_volume(avg_vol)}\n"
         f"Relative Volume: {fmt_relvol}"
     )
