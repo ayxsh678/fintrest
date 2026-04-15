@@ -7,6 +7,7 @@ and reuse it.
 import requests
 from cachetools import TTLCache
 from threading import Lock
+from datetime import datetime, timedelta
 
 _nse_cache = TTLCache(maxsize=100, ttl=300)
 _nse_lock  = Lock()
@@ -36,6 +37,30 @@ def _get_session() -> requests.Session | None:
             return s
         except requests.RequestException:
             return None
+
+
+def _get_avg_volume(session: requests.Session, symbol: str) -> float | None:
+    """Fetch ~30 trading days of history and return the average daily volume."""
+    to_dt   = datetime.now()
+    from_dt = to_dt - timedelta(days=45)  # 45 calendar days ≈ 30 trading days
+    try:
+        resp = session.get(
+            "https://www.nseindia.com/api/historical/cm/equity",
+            params={
+                "symbol": symbol,
+                "series": '["EQ"]',
+                "from": from_dt.strftime("%d-%m-%Y"),
+                "to":   to_dt.strftime("%d-%m-%Y"),
+            },
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+        records = (resp.json() or {}).get("data") or []
+        volumes = [float(r["CH_TOT_TRADED_QTY"]) for r in records if r.get("CH_TOT_TRADED_QTY")]
+        return sum(volumes) / len(volumes) if volumes else None
+    except (requests.RequestException, ValueError, KeyError, ZeroDivisionError):
+        return None
 
 
 def _strip_suffix(ticker: str) -> str:
@@ -94,6 +119,18 @@ def get_nse_quote(ticker: str) -> dict | None:
         except (TypeError, ValueError):
             mkt_cap = None
 
+        # Relative volume = today's volume ÷ 30-day average volume
+        try:
+            today_vol = float(price_info.get("totalTradedVolume"))
+        except (TypeError, ValueError):
+            today_vol = None
+
+        rel_vol = None
+        if today_vol is not None:
+            avg_vol = _get_avg_volume(session, symbol)
+            if avg_vol is not None and avg_vol > 0:
+                rel_vol = round(today_vol / avg_vol, 2)
+
         quote = {
             "price": price,
             "previous_close": price_info.get("previousClose"),
@@ -104,6 +141,8 @@ def get_nse_quote(ticker: str) -> dict | None:
             "pe": pe,
             "eps": eps,
             "mkt_cap": mkt_cap,
+            "today_vol": today_vol,
+            "rel_vol": rel_vol,
         }
         if quote["price"] is None:
             return None
@@ -119,8 +158,16 @@ def format_as_stock_data(ticker: str, quote: dict) -> str:
     def fmt_price(v): return f"₹{v:,}" if v is not None else "N/A"
     def fmt_val(v):   return f"{v:.2f}" if isinstance(v, float) else str(v) if v is not None else "N/A"
 
-    pct = quote.get("change_pct")
-    mkt_cap = quote.get("mkt_cap")
+    pct       = quote.get("change_pct")
+    mkt_cap   = quote.get("mkt_cap")
+    today_vol = quote.get("today_vol")
+    rel_vol   = quote.get("rel_vol")
+
+    fmt_mktcap  = f"₹{mkt_cap:,}"          if mkt_cap   is not None else "N/A"
+    fmt_pct     = f"{pct:.2f}%"            if pct       is not None else "N/A"
+    fmt_vol     = f"{int(today_vol):,}"    if today_vol is not None else "N/A"
+    fmt_relvol  = f"{rel_vol}x"            if rel_vol   is not None else "N/A"
+
     return (
         f"Stock: {quote.get('long_name', ticker)} ({ticker}) — NSE (live)\n"
         f"Current Price: {fmt_price(quote.get('price'))}\n"
@@ -128,10 +175,10 @@ def format_as_stock_data(ticker: str, quote: dict) -> str:
         f"52W High: {fmt_price(quote.get('week_high'))}\n"
         f"52W Low: {fmt_price(quote.get('week_low'))}\n"
         f"P/E Ratio: {fmt_val(quote.get('pe'))}\n"
-        f"Market Cap: {f'₹{mkt_cap:,}' if mkt_cap is not None else 'N/A'}\n"
+        f"Market Cap: {fmt_mktcap}\n"
         f"EPS: {fmt_val(quote.get('eps'))}\n"
-        f"5-Day Change: {f'{pct:.2f}%' if pct is not None else 'N/A'}\n"
-        f"Latest Volume: N/A\n"
+        f"5-Day Change: {fmt_pct}\n"
+        f"Latest Volume: {fmt_vol}\n"
         f"30D Avg Volume: N/A\n"
-        f"Relative Volume: N/A"
+        f"Relative Volume: {fmt_relvol}"
     )
