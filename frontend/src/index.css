@@ -11,3 +11,18 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Visible focus + hover state for the chart's "open on TradingView"
+   click-through badge. Default browser focus ring is barely visible on
+   the dark background, so paint our own amber ring that matches the
+   rest of the app's accent color. */
+.chart-tv-badge:hover {
+  background: rgba(247, 200, 67, 0.12) !important;
+  color: #f7c843 !important;
+}
+.chart-tv-badge:focus-visible {
+  outline: none;
+  border-color: #f7c843 !important;
+  box-shadow: 0 0 0 2px rgba(247, 200, 67, 0.4);
+  color: #f7c843 !important;
+}

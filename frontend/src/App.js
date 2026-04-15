@@ -175,6 +175,29 @@ const clearSession = async () => {
 // underscore; keep length sane.
 const CHART_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
 
+// Build a TradingView symbol-page URL so tapping/clicking a chart opens
+// the full TV experience (matches the old iframe's click-through behavior
+// without bringing back the "only available on TradingView" modal).
+const TV_CRYPTO_MAP = {
+  BTC:  "BINANCE-BTCUSDT",
+  ETH:  "BINANCE-ETHUSDT",
+  SOL:  "BINANCE-SOLUSDT",
+  BNB:  "BINANCE-BNBUSDT",
+  DOGE: "BINANCE-DOGEUSDT",
+};
+function tvSymbolUrl(ticker) {
+  // Guard with the same shape check used for /chart/ calls — any symbol
+  // the backend would reject would also yield a broken TV URL, so bail
+  // early and let the caller render without a click-through.
+  if (typeof ticker !== "string" || !CHART_VALID_TICKER.test(ticker)) return null;
+  const t = ticker.toUpperCase();
+  if (TV_CRYPTO_MAP[t]) return `https://www.tradingview.com/symbols/${TV_CRYPTO_MAP[t]}/`;
+  if (t.endsWith(".NS")) return `https://www.tradingview.com/symbols/NSE-${t.slice(0, -3)}/`;
+  if (t.endsWith(".BO")) return `https://www.tradingview.com/symbols/BSE-${t.slice(0, -3)}/`;
+  if (t.includes(":"))   return `https://www.tradingview.com/symbols/${t.replace(":", "-")}/`;
+  return `https://www.tradingview.com/symbols/NASDAQ-${t}/`;
+}
+
 // Only attach a title= tooltip when the value is long enough to plausibly
 // truncate. Short values (e.g. "AAPL", "1.25x") don't need a tooltip and
 // the extra attribute just adds noise for screen readers.
@@ -294,14 +317,45 @@ function TradingViewChart({ ticker, height = 220 }) {
     return <ChartFallback ticker={ticker} height={height} reason={state.reason} />;
   }
 
+  const tvHref = tvSymbolUrl(ticker);
+  const tickerLabel = (
+    <span style={{ fontFamily: "'DM Mono', monospace" }}>
+      {ticker} <span aria-hidden="true" style={{ opacity: 0.6 }}>↗</span>
+    </span>
+  );
+
   return (
     <div style={{ position: "relative", height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117", border: "1px solid #21262d" }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
-      <div style={{ position: "absolute", top: 8, left: 10, fontSize: 11, color: "#8b949e", fontFamily: "'DM Mono', monospace", pointerEvents: "none" }}>
-        {ticker}
-      </div>
+      {/* Corner badge — doubles as the click-through to TradingView. Keeping
+          the hit area small (instead of a full-canvas overlay) leaves
+          crosshair, drag, zoom, and context-menu interactions on the chart
+          untouched, while still giving users an obvious "open on TV"
+          affordance that matches the old widget's behavior. */}
+      {tvHref ? (
+        <a
+          href={tvHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Open ${ticker} on TradingView`}
+          aria-label={`Open ${ticker} on TradingView`}
+          className="chart-tv-badge"
+          style={{
+            position: "absolute", top: 6, left: 8, zIndex: 2,
+            fontSize: 11, color: "#8b949e", textDecoration: "none",
+            padding: "2px 6px", borderRadius: 6,
+            background: "rgba(13,17,23,0.6)", border: "1px solid transparent",
+          }}
+        >
+          {tickerLabel}
+        </a>
+      ) : (
+        <div style={{ position: "absolute", top: 8, left: 10, fontSize: 11, color: "#8b949e", fontFamily: "'DM Mono', monospace", pointerEvents: "none" }}>
+          {ticker}
+        </div>
+      )}
       {state.status === "loading" && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#8b949e", fontSize: 11 }}>
+        <div style={{ position: "absolute", inset: 0, zIndex: 3, display: "flex", alignItems: "center", justifyContent: "center", color: "#8b949e", fontSize: 11, background: "#0d1117" }}>
           Loading chart…
         </div>
       )}
