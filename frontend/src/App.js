@@ -170,25 +170,40 @@ const clearSession = async () => {
 };
 
 // ── TradingView ─────────────────────────────────────────
+// Reject obvious junk before handing it to the embed (which would show an
+// empty "Invalid symbol" box). Allow letters, digits, dot, dash, colon,
+// underscore; keep length sane.
+const TV_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
+
+function tvSymbol(t) {
+  const map = {
+    BTC:  "BINANCE:BTCUSDT",
+    ETH:  "BINANCE:ETHUSDT",
+    SOL:  "BINANCE:SOLUSDT",
+    BNB:  "BINANCE:BNBUSDT",
+    DOGE: "BINANCE:DOGEUSDT",
+  };
+  if (map[t]) return map[t];
+  if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
+  if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
+  return t.includes(":") ? t : `NASDAQ:${t}`;
+}
+
+function TradingViewFallback({ ticker, height, reason }) {
+  return (
+    <div style={{ height, width: "100%", borderRadius: 12, background: "#161b22", border: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6, padding: 12, textAlign: "center" }}>
+      <div style={{ fontSize: 13, color: "#f7c843", fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{ticker || "—"}</div>
+      <div style={{ fontSize: 11, color: "#8b949e" }}>{reason}</div>
+    </div>
+  );
+}
+
 function TradingViewChart({ ticker, height = 220 }) {
   const ref = useRef(null);
-
-  const tvSymbol = (t) => {
-    const map = {
-      BTC:  "BINANCE:BTCUSDT",
-      ETH:  "BINANCE:ETHUSDT",
-      SOL:  "BINANCE:SOLUSDT",
-      BNB:  "BINANCE:BNBUSDT",
-      DOGE: "BINANCE:DOGEUSDT",
-    };
-    if (map[t]) return map[t];
-    if (t.endsWith(".NS")) return "NSE:" + t.replace(".NS", "");
-    if (t.endsWith(".BO")) return "BSE:" + t.replace(".BO", "");
-    return t.includes(":") ? t : `NASDAQ:${t}`;
-  };
+  const isValid = typeof ticker === "string" && TV_VALID_TICKER.test(ticker);
 
   useEffect(() => {
-    if (!ref.current) return;
+    if (!isValid || !ref.current) return;
 
     while (ref.current.firstChild) {
       ref.current.removeChild(ref.current.firstChild);
@@ -218,17 +233,30 @@ function TradingViewChart({ ticker, height = 220 }) {
       backgroundColor:     "rgba(13,17,23,1)",
       gridColor:           "rgba(33,38,45,1)",
     });
+    // Guards against network/script failures: if the widget script errors
+    // out (blocker, offline, CSP), swap in the fallback card instead of
+    // leaving an empty pane.
+    s.onerror = () => {
+      if (!ref.current) return;
+      ref.current.innerHTML = "";
+      const msg = document.createElement("div");
+      msg.style.cssText = "height:100%;width:100%;display:flex;align-items:center;justify-content:center;color:#8b949e;font-size:11px;";
+      msg.textContent = "Chart unavailable";
+      ref.current.appendChild(msg);
+    };
     ref.current.appendChild(s);
 
     return () => {
       if (ref.current) ref.current.innerHTML = "";
     };
-  }, [ticker]);
+  }, [ticker, isValid]);
+
+  if (!isValid) {
+    return <TradingViewFallback ticker={ticker} height={height} reason="Chart unavailable for this symbol" />;
+  }
 
   // ✅ key on wrapper forces full React remount when ticker changes
   // ✅ ref on inner div so React doesn't conflict with key
-  // TradingView supports NSE:/BSE: symbols natively via tvSymbol mapping,
-  // so every ticker gets the embedded chart.
   return (
     <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }}>
       <div ref={ref} style={{ height: "100%", width: "100%" }} />
