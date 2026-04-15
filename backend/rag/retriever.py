@@ -36,11 +36,60 @@ stock_cache     = TTLCache(maxsize=50,  ttl=300)
 news_cache      = TTLCache(maxsize=100, ttl=300)
 earnings_cache  = TTLCache(maxsize=50,  ttl=3600)
 taketoday_cache = TTLCache(maxsize=50,  ttl=600)
+ohlc_cache      = TTLCache(maxsize=200, ttl=1_800)
 
 stock_lock     = Lock()
 news_lock      = Lock()
 earnings_lock  = Lock()
 taketoday_lock = Lock()
+ohlc_lock      = Lock()
+
+
+def get_ohlc_yf(ticker: str, days: int = 180) -> list[dict] | None:
+    """yfinance-backed OHLC fallback when EODHD is unavailable / out of plan.
+
+    .history() hits Yahoo's chart endpoint, which doesn't require the crumb
+    cookie that breaks .info on cloud IPs — so it tends to keep working
+    even when everything else in yfinance fails with 401. Returns the
+    same shape rag.eodhd.get_ohlc does: {time (epoch sec), open, high,
+    low, close, volume}.
+    """
+    cache_key = f"{ticker}:{days}"
+    with ohlc_lock:
+        if cache_key in ohlc_cache:
+            return ohlc_cache[cache_key]
+    try:
+        # Map our days window to yfinance's period strings; overshoot a
+        # little so non-trading-day gaps don't leave the chart sparse.
+        period = "2y" if days > 365 else ("1y" if days > 180 else ("6mo" if days > 60 else "3mo"))
+        hist = yf.Ticker(ticker).history(period=period)
+        if hist is None or hist.empty:
+            return None
+        rows = []
+        for idx, row in hist.iterrows():
+            try:
+                ts = int(pd.Timestamp(idx).timestamp())
+                close = float(row["Close"])
+                rows.append({
+                    "time":   ts,
+                    "open":   float(row.get("Open",  close)),
+                    "high":   float(row.get("High",  close)),
+                    "low":    float(row.get("Low",   close)),
+                    "close":  close,
+                    "volume": float(row.get("Volume", 0) or 0),
+                })
+            except (TypeError, ValueError, KeyError):
+                continue
+        rows.sort(key=lambda r: r["time"])
+        rows = rows[-days:]
+        if not rows:
+            return None
+    except Exception:  # noqa: BLE001 — broad so yfinance internals never 500 the chart path
+        return None
+
+    with ohlc_lock:
+        ohlc_cache[cache_key] = rows
+    return rows
 
 TIME_RANGE_MAP = {
     "24h": 1, "3d": 3, "7d": 7, "30d": 30, "1y": 365
