@@ -68,13 +68,41 @@ def get_nse_quote(ticker: str) -> dict | None:
         price_info = data.get("priceInfo") or {}
         if not price_info:
             return None
+        meta = data.get("metadata") or {}
+
+        try:
+            price = float(price_info.get("lastPrice"))
+        except (TypeError, ValueError):
+            price = None
+
+        pe_raw = meta.get("pdSymbolPe")
+        try:
+            pe = float(pe_raw) if pe_raw not in (None, "-", "") else None
+        except (TypeError, ValueError):
+            pe = None
+
+        try:
+            eps = round(price / pe, 2) if price is not None and pe is not None and pe != 0 else None
+        except (TypeError, ZeroDivisionError):
+            eps = None
+
+        # Market cap = price × issued shares (issuedSize is in units)
+        try:
+            issued = float(meta["issuedSize"]) if meta.get("issuedSize") is not None else None
+            mkt_cap = int(price * issued) if price is not None and issued is not None else None
+        except (TypeError, ValueError):
+            mkt_cap = None
+
         quote = {
-            "price": price_info.get("lastPrice"),
+            "price": price,
             "previous_close": price_info.get("previousClose"),
             "change_pct": price_info.get("pChange"),
             "week_high": (price_info.get("weekHighLow") or {}).get("max"),
             "week_low":  (price_info.get("weekHighLow") or {}).get("min"),
             "long_name": (data.get("info") or {}).get("companyName", symbol),
+            "pe": pe,
+            "eps": eps,
+            "mkt_cap": mkt_cap,
         }
         if quote["price"] is None:
             return None
@@ -87,22 +115,22 @@ def get_nse_quote(ticker: str) -> dict | None:
 
 
 def format_as_stock_data(ticker: str, quote: dict) -> str:
-    def fmt(v): return f"₹{v}" if v is not None else "N/A"
+    def fmt_price(v): return f"₹{v:,}" if v is not None else "N/A"
+    def fmt_val(v):   return f"{v:.2f}" if isinstance(v, float) else str(v) if v is not None else "N/A"
+
+    pct = quote.get("change_pct")
+    mkt_cap = quote.get("mkt_cap")
     return (
         f"Stock: {quote.get('long_name', ticker)} ({ticker}) — NSE (live)\n"
-        f"Current Price: {fmt(quote.get('price'))}\n"
-        f"Previous Close: {fmt(quote.get('previous_close'))}\n"
-        f"52W High: {fmt(quote.get('week_high'))}\n"
-        f"52W Low: {fmt(quote.get('week_low'))}\n"
-        f"P/E Ratio: N/A\n"
-        f"Market Cap: N/A\n"
-        f"EPS: N/A\n"
-        f"5-Day Change: {quote['change_pct']:.2f}%\n"
-        if quote.get("change_pct") is not None else
-        f"Stock: {quote.get('long_name', ticker)} ({ticker}) — NSE (live)\n"
-        f"Current Price: {fmt(quote.get('price'))}\n"
-        f"Previous Close: {fmt(quote.get('previous_close'))}\n"
-        f"52W High: {fmt(quote.get('week_high'))}\n"
-        f"52W Low: {fmt(quote.get('week_low'))}\n"
-        f"P/E Ratio: N/A\nMarket Cap: N/A\nEPS: N/A\n5-Day Change: N/A\n"
-    ) + "Latest Volume: N/A\n30D Avg Volume: N/A\nRelative Volume: N/A"
+        f"Current Price: {fmt_price(quote.get('price'))}\n"
+        f"Previous Close: {fmt_price(quote.get('previous_close'))}\n"
+        f"52W High: {fmt_price(quote.get('week_high'))}\n"
+        f"52W Low: {fmt_price(quote.get('week_low'))}\n"
+        f"P/E Ratio: {fmt_val(quote.get('pe'))}\n"
+        f"Market Cap: {f'₹{mkt_cap:,}' if mkt_cap is not None else 'N/A'}\n"
+        f"EPS: {fmt_val(quote.get('eps'))}\n"
+        f"5-Day Change: {f'{pct:.2f}%' if pct is not None else 'N/A'}\n"
+        f"Latest Volume: N/A\n"
+        f"30D Avg Volume: N/A\n"
+        f"Relative Volume: N/A"
+    )
