@@ -186,7 +186,10 @@ const TV_CRYPTO_MAP = {
   DOGE: "BINANCE-DOGEUSDT",
 };
 function tvSymbolUrl(ticker) {
-  if (typeof ticker !== "string") return null;
+  // Guard with the same shape check used for /chart/ calls — any symbol
+  // the backend would reject would also yield a broken TV URL, so bail
+  // early and let the caller render without a click-through.
+  if (typeof ticker !== "string" || !CHART_VALID_TICKER.test(ticker)) return null;
   const t = ticker.toUpperCase();
   if (TV_CRYPTO_MAP[t]) return `https://www.tradingview.com/symbols/${TV_CRYPTO_MAP[t]}/`;
   if (t.endsWith(".NS")) return `https://www.tradingview.com/symbols/NSE-${t.slice(0, -3)}/`;
@@ -315,29 +318,44 @@ function TradingViewChart({ ticker, height = 220 }) {
   }
 
   const tvHref = tvSymbolUrl(ticker);
+  const tickerLabel = (
+    <span style={{ fontFamily: "'DM Mono', monospace" }}>
+      {ticker} <span aria-hidden="true" style={{ opacity: 0.6 }}>↗</span>
+    </span>
+  );
 
   return (
     <div style={{ position: "relative", height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117", border: "1px solid #21262d" }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
-      <div style={{ position: "absolute", top: 8, left: 10, fontSize: 11, color: "#8b949e", fontFamily: "'DM Mono', monospace", pointerEvents: "none" }}>
-        {ticker}
-      </div>
-      {/* Transparent click-through overlay so tap/click on the chart opens
-          the full TradingView page (matches the old iframe's click-through
-          without re-introducing TV's licensing modal on NSE/BSE). Sits
-          above the canvas but below the loading indicator. */}
-      {tvHref && (
+      {/* Corner badge — doubles as the click-through to TradingView. Keeping
+          the hit area small (instead of a full-canvas overlay) leaves
+          crosshair, drag, zoom, and context-menu interactions on the chart
+          untouched, while still giving users an obvious "open on TV"
+          affordance that matches the old widget's behavior. */}
+      {tvHref ? (
         <a
           href={tvHref}
           target="_blank"
           rel="noopener noreferrer"
           title={`Open ${ticker} on TradingView`}
           aria-label={`Open ${ticker} on TradingView`}
-          style={{ position: "absolute", inset: 0, zIndex: 1 }}
-        />
+          className="chart-tv-badge"
+          style={{
+            position: "absolute", top: 6, left: 8, zIndex: 2,
+            fontSize: 11, color: "#8b949e", textDecoration: "none",
+            padding: "2px 6px", borderRadius: 6,
+            background: "rgba(13,17,23,0.6)", border: "1px solid transparent",
+          }}
+        >
+          {tickerLabel}
+        </a>
+      ) : (
+        <div style={{ position: "absolute", top: 8, left: 10, fontSize: 11, color: "#8b949e", fontFamily: "'DM Mono', monospace", pointerEvents: "none" }}>
+          {ticker}
+        </div>
       )}
       {state.status === "loading" && (
-        <div style={{ position: "absolute", inset: 0, zIndex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: "#8b949e", fontSize: 11, background: "#0d1117" }}>
+        <div style={{ position: "absolute", inset: 0, zIndex: 3, display: "flex", alignItems: "center", justifyContent: "center", color: "#8b949e", fontSize: 11, background: "#0d1117" }}>
           Loading chart…
         </div>
       )}
