@@ -204,15 +204,22 @@ function TradingViewChart({ ticker, height = 220 }) {
 
   useEffect(() => {
     if (!isValid || !ref.current) return;
+    const host = ref.current;
+    host.innerHTML = "";
 
-    while (ref.current.firstChild) {
-      ref.current.removeChild(ref.current.firstChild);
-    }
+    // TradingView's embed-widget-advanced-chart.js expects this exact DOM
+    // structure. Without the .tradingview-widget-container wrapper and the
+    // .tradingview-widget-container__widget sibling, the widget degrades
+    // and may render a hard-coded default symbol (seen as Apple Inc. even
+    // for NSE:* tickers).
+    const wrap = document.createElement("div");
+    wrap.className = "tradingview-widget-container";
+    wrap.style.cssText = "height:100%;width:100%;";
 
-    const container = document.createElement("div");
-    container.style.height = "100%";
-    container.style.width  = "100%";
-    ref.current.appendChild(container);
+    const slot = document.createElement("div");
+    slot.className = "tradingview-widget-container__widget";
+    slot.style.cssText = "height:100%;width:100%;";
+    wrap.appendChild(slot);
 
     const s    = document.createElement("script");
     s.src      = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
@@ -237,18 +244,16 @@ function TradingViewChart({ ticker, height = 220 }) {
     // out (blocker, offline, CSP), swap in the fallback card instead of
     // leaving an empty pane.
     s.onerror = () => {
-      if (!ref.current) return;
-      ref.current.innerHTML = "";
+      host.innerHTML = "";
       const msg = document.createElement("div");
       msg.style.cssText = "height:100%;width:100%;display:flex;align-items:center;justify-content:center;color:#8b949e;font-size:11px;";
       msg.textContent = "Chart unavailable";
-      ref.current.appendChild(msg);
+      host.appendChild(msg);
     };
-    ref.current.appendChild(s);
+    wrap.appendChild(s);
+    host.appendChild(wrap);
 
-    return () => {
-      if (ref.current) ref.current.innerHTML = "";
-    };
+    return () => { host.innerHTML = ""; };
   }, [ticker, isValid]);
 
   if (!isValid) {
