@@ -227,16 +227,8 @@ function TradingViewChart({ ticker, height = 220 }) {
 
   // ✅ key on wrapper forces full React remount when ticker changes
   // ✅ ref on inner div so React doesn't conflict with key
-  const tvUrl = `https://www.tradingview.com/chart/?symbol=${tvSymbol(ticker)}`;
-  const isSupported = !ticker.endsWith(".NS") && !ticker.endsWith(".BO");
-  if (!isSupported) return (
-    <a href={tvUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-      <div style={{ height, width: "100%", borderRadius: 12, background: "#161b22", border: "1px solid #21262d", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10, cursor: "pointer" }}>
-        <div style={{ fontSize: 13, color: "#f7c843", fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{ticker}</div>
-        <div style={{ fontSize: 11, color: "#8b949e" }}>View live chart on TradingView ↗</div>
-      </div>
-    </a>
-  );
+  // TradingView supports NSE:/BSE: symbols natively via tvSymbol mapping,
+  // so every ticker gets the embedded chart.
   return (
     <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }}>
       <div ref={ref} style={{ height: "100%", width: "100%" }} />
