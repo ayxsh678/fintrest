@@ -68,7 +68,8 @@ def get_nse_quote(ticker: str) -> dict | None:
         price_info = data.get("priceInfo") or {}
         if not price_info:
             return None
-        meta = data.get("metadata") or {}
+        meta         = data.get("metadata")     or {}
+        security     = data.get("securityInfo") or {}
 
         try:
             price = float(price_info.get("lastPrice"))
@@ -86,9 +87,9 @@ def get_nse_quote(ticker: str) -> dict | None:
         except (TypeError, ZeroDivisionError):
             eps = None
 
-        # Market cap = price × issued shares (issuedSize is in units)
+        # Market cap = price × issued shares; issuedSize lives in securityInfo
         try:
-            issued = float(meta["issuedSize"]) if meta.get("issuedSize") is not None else None
+            issued = float(security["issuedSize"]) if security.get("issuedSize") is not None else None
             mkt_cap = int(price * issued) if price is not None and issued is not None else None
         except (TypeError, ValueError):
             mkt_cap = None
