@@ -10,6 +10,8 @@ from cachetools import TTLCache
 from threading import Lock
 from datetime import datetime, timedelta
 
+from rag.alpha_vantage import get_avg_volume as av_get_avg_volume
+
 logger = logging.getLogger(__name__)
 
 _nse_cache = TTLCache(maxsize=100, ttl=300)
@@ -48,11 +50,16 @@ def _get_session() -> requests.Session | None:
 
 
 def _get_avg_volume(session: requests.Session, symbol: str) -> float | None:
-    """Return the mean daily volume over ~30 trading days, with per-symbol caching."""
+    """Return the mean daily volume over ~30 trading days, with per-symbol caching.
+
+    Tries NSE's historical endpoint first; falls back to Alpha Vantage's
+    TIME_SERIES_DAILY when NSE is unreachable (e.g. Render egress IPs blocked).
+    """
     with _vol_lock:
         if symbol in _vol_cache:
             return _vol_cache[symbol]
 
+    avg: float | None = None
     to_dt   = datetime.now()
     from_dt = to_dt - timedelta(days=45)  # 45 calendar days ≈ 30 trading days
     try:
@@ -66,17 +73,37 @@ def _get_avg_volume(session: requests.Session, symbol: str) -> float | None:
             },
             timeout=10,
         )
-        if resp.status_code != 200:
-            return None
-        records = (resp.json() or {}).get("data") or []
-        volumes = [float(r["CH_TOT_TRADED_QTY"]) for r in records if r.get("CH_TOT_TRADED_QTY")]
-        avg = sum(volumes) / len(volumes) if volumes else None
+        if resp.status_code == 200:
+            payload = resp.json()
+            records = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(records, list):
+                logger.info("NSE history: unexpected shape for %s; will try Alpha Vantage", symbol)
+                records = []
+            volumes = [
+                float(r["CH_TOT_TRADED_QTY"])
+                for r in records
+                if isinstance(r, dict) and r.get("CH_TOT_TRADED_QTY")
+            ]
+            if volumes:
+                avg = sum(volumes) / len(volumes)
+            else:
+                logger.info("NSE history: empty volume series for %s; will try Alpha Vantage", symbol)
+        else:
+            logger.info("NSE history status %s for %s; will try Alpha Vantage", resp.status_code, symbol)
     except requests.RequestException as exc:
         logger.warning("NSE history request failed for %s: %s", symbol, exc)
-        return None
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, TypeError, AttributeError) as exc:
         logger.warning("NSE history parse error for %s: %s", symbol, exc)
-        return None
+
+    if avg is None:
+        try:
+            # Re-append .NS so alpha_vantage._av_symbol maps it to the .BSE form
+            # it expects; passing the bare NSE symbol would bypass that mapping.
+            avg = av_get_avg_volume(symbol + ".NS")
+            if avg is not None:
+                logger.info("Using Alpha Vantage avg volume for %s: %.0f", symbol, avg)
+        except Exception as exc:  # noqa: BLE001 — defensive, never let fallback crash quote path
+            logger.warning("Alpha Vantage avg volume failed for %s: %s", symbol, exc)
 
     with _vol_lock:
         if avg is not None:
