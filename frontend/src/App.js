@@ -174,9 +174,6 @@ const clearSession = async () => {
 // empty "Invalid symbol" box). Allow letters, digits, dot, dash, colon,
 // underscore; keep length sane.
 const TV_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
-// Single source of truth for the "fill the host" sizing used by both the
-// TradingView wrapper div and its internal widget slot.
-const TV_FILL_STYLE = "height:100%;width:100%;";
 
 function tvSymbol(t) {
   const map = {
@@ -202,78 +199,41 @@ function TradingViewFallback({ ticker, height, reason }) {
 }
 
 function TradingViewChart({ ticker, height = 220 }) {
-  const ref = useRef(null);
   const isValid = typeof ticker === "string" && TV_VALID_TICKER.test(ticker);
-
-  useEffect(() => {
-    if (!isValid || !ref.current) return;
-    const host = ref.current;
-
-    // TradingView's embed-widget-advanced-chart.js expects this exact DOM
-    // structure. Without the .tradingview-widget-container wrapper and the
-    // .tradingview-widget-container__widget sibling, the widget degrades
-    // and may render a hard-coded default symbol (seen as Apple Inc. even
-    // for NSE:* tickers).
-    const wrap = document.createElement("div");
-    wrap.className = "tradingview-widget-container";
-    wrap.style.cssText = TV_FILL_STYLE;
-
-    const slot = document.createElement("div");
-    slot.className = "tradingview-widget-container__widget";
-    slot.style.cssText = TV_FILL_STYLE;
-    wrap.appendChild(slot);
-
-    const s    = document.createElement("script");
-    s.src      = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    s.type     = "text/javascript";
-    s.async    = true;
-    s.innerHTML = JSON.stringify({
-      autosize:            true,
-      symbol:              tvSymbol(ticker),
-      interval:            "D",
-      timezone:            "Etc/UTC",
-      theme:               "dark",
-      style:               "1",
-      locale:              "en",
-      enable_publishing:   false,
-      allow_symbol_change: false,
-      calendar:            false,
-      support_host:        "https://www.tradingview.com",
-      backgroundColor:     "rgba(13,17,23,1)",
-      gridColor:           "rgba(33,38,45,1)",
-    });
-    // Guards against network/script failures: if the widget script errors
-    // out (blocker, offline, CSP), swap in a fallback message card instead
-    // of leaving an empty pane. Tracked separately from wrap so cleanup
-    // can remove the exact node it added.
-    let fallback = null;
-    s.onerror = () => {
-      if (wrap.parentNode === host) host.removeChild(wrap);
-      fallback = document.createElement("div");
-      fallback.style.cssText = `${TV_FILL_STYLE}display:flex;align-items:center;justify-content:center;color:#8b949e;font-size:11px;`;
-      fallback.textContent = "Chart unavailable";
-      host.appendChild(fallback);
-    };
-    wrap.appendChild(s);
-    host.appendChild(wrap);
-
-    // Targeted cleanup: only remove the nodes this effect added, so future
-    // sibling markup inside `host` is left untouched.
-    return () => {
-      if (wrap.parentNode === host) host.removeChild(wrap);
-      if (fallback && fallback.parentNode === host) host.removeChild(fallback);
-    };
-  }, [ticker, isValid]);
 
   if (!isValid) {
     return <TradingViewFallback ticker={ticker} height={height} reason="Chart unavailable for this symbol" />;
   }
 
-  // ✅ key on wrapper forces full React remount when ticker changes
-  // ✅ ref on inner div so React doesn't conflict with key
+  // TradingView's public /widgetembed/ page renders a self-contained chart
+  // keyed off query params. Using it via <iframe> sidesteps the auto-init
+  // script's caching behavior (repeated <script src="..."> tags with the
+  // same URL don't re-execute, which was making the second+ chart on a
+  // page silently inherit the first chart's symbol — e.g. showing Apple
+  // Inc. for RELIANCE.NS). Each iframe is independent.
+  const params = new URLSearchParams({
+    symbol:        tvSymbol(ticker),
+    interval:      "D",
+    theme:         "dark",
+    style:         "1",
+    locale:        "en",
+    hide_top_toolbar: "0",
+    hide_legend:   "0",
+    save_image:    "0",
+    toolbar_bg:    "#0d1117",
+    withdateranges: "0",
+  });
+  const src = `https://www.tradingview.com/widgetembed/?${params.toString()}`;
+
   return (
-    <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden" }}>
-      <div ref={ref} style={{ height: "100%", width: "100%" }} />
+    <div key={ticker} style={{ height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117" }}>
+      <iframe
+        title={`TradingView chart ${ticker}`}
+        src={src}
+        style={{ width: "100%", height: "100%", border: 0 }}
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+      />
     </div>
   );
 }
