@@ -7,6 +7,7 @@ from threading import Lock
 
 from rag.alpha_vantage import get_quote as av_get_quote, format_as_stock_data as av_format
 from rag.nse_quote import get_nse_quote, format_as_stock_data as nse_format
+from rag.eodhd import get_avg_volume as eodhd_get_avg_volume
 
 india_cache = TTLCache(maxsize=100, ttl=300)
 india_lock  = Lock()
@@ -109,9 +110,19 @@ def get_india_stock_data(ticker: str) -> str:
 
         avg_volume_30d = hist_30d["Volume"].mean() if not hist_30d.empty else 0
         latest_volume  = hist["Volume"].iloc[-1]
+        # yfinance's 30d history is often empty / zero-volume for NSE tickers on
+        # Render (Yahoo returns prices but no volume for Indian equities from
+        # cloud IPs). Fall back to EODHD so Rel Vol stays populated.
+        if not avg_volume_30d or avg_volume_30d <= 0:
+            try:
+                fallback_avg = eodhd_get_avg_volume(ticker)
+                if fallback_avg and fallback_avg > 0:
+                    avg_volume_30d = fallback_avg
+            except Exception:  # noqa: BLE001
+                pass
         rel_volume = (
             f"{latest_volume / avg_volume_30d:.2f}x"
-            if avg_volume_30d > 0 else "N/A"
+            if avg_volume_30d and avg_volume_30d > 0 and latest_volume else "N/A"
         )
 
         currency = info.get("currency", "INR")
