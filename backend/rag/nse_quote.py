@@ -141,9 +141,11 @@ def get_nse_quote(ticker: str) -> dict | None:
             mkt_cap = None
 
         # Relative volume = today's volume ÷ 30-day average volume.
+        # totalTradedVolume lives in marketDeptOrderBook.tradeInfo, not priceInfo.
         # Strip thousands separators before conversion in case the API returns "1,234,567".
+        trade_info = (data.get("marketDeptOrderBook") or {}).get("tradeInfo") or {}
         try:
-            raw_vol = price_info.get("totalTradedVolume")
+            raw_vol = trade_info.get("totalTradedVolume")
             today_vol = float(str(raw_vol).replace(",", "")) if raw_vol is not None else None
         except (TypeError, ValueError):
             today_vol = None
