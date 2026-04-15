@@ -11,6 +11,7 @@ import (
 	"net/smtp"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -91,6 +92,12 @@ func getActiveSessions() []string {
 var httpClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
+
+// Kept in sync with CHART_VALID_TICKER in frontend/src/App.js. Allowed
+// characters: alphanumerics plus `.`, `_`, `:`, `-`; length 1..20. Any
+// drift between the two is a footgun (frontend rejects something the
+// gateway happily forwards, or vice versa) so keep them identical.
+var validChartTicker = regexp.MustCompile(`^[A-Za-z0-9._:\-]{1,20}$`)
 
 func pythonURL() string {
 	url := os.Getenv("PYTHON_SERVICE_URL")
@@ -506,6 +513,39 @@ func main() {
 			return
 		}
 		c.JSON(http.StatusOK, getStockData(ticker))
+	})
+
+	// ── Chart (OHLC) ───────────────────────────────────
+	// Backs the self-hosted lightweight-charts component (replaces the
+	// TradingView widget for NSE/BSE where TV shows a licensing modal).
+	r.GET("/chart/:ticker", func(c *gin.Context) {
+		ticker := strings.ToUpper(strings.TrimSpace(c.Param("ticker")))
+		// Mirror the frontend's CHART_VALID_TICKER regex so the two
+		// layers can't disagree about which symbols are accepted.
+		if !validChartTicker.MatchString(ticker) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticker"})
+			return
+		}
+		path := "/chart/" + url.PathEscape(ticker)
+		if days := c.Query("days"); days != "" {
+			path += "?days=" + url.QueryEscape(days)
+		}
+		resp, err := httpClient.Get(pythonURL() + path)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Chart service unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+		var result interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode chart data"})
+			return
+		}
+		// Propagate upstream status so the frontend can tell a soft
+		// empty-series response (Python returns 200 with ok:false) from
+		// a genuine upstream error (4xx/5xx). Without this, every
+		// failure mode collapsed to 200 and the UI couldn't react.
+		c.JSON(resp.StatusCode, result)
 	})
 
 	// ── Sentiment ──────────────────────────────────────

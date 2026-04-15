@@ -20,7 +20,12 @@ from threading import Lock
 from rag.crypto import get_coin_id, get_crypto_data, get_crypto_news, KNOWN_COINS
 from rag.india_stocks import extract_india_ticker, get_india_stock_data, INDIA_COMPANY_MAP
 from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot
-from rag.alpha_vantage import get_quote as av_get_quote, format_as_stock_data as av_format
+from rag.alpha_vantage import (
+    get_quote as av_get_quote,
+    get_overview as av_get_overview,
+    format_as_stock_data as av_format,
+)
+from rag.eodhd import get_avg_volume as eodhd_get_avg_volume
 
 NEWS_API_KEY     = os.getenv("NEWS_API_KEY")
 TAKETODAY_FEED   = "https://taketoday.co/feed"
@@ -185,6 +190,19 @@ def get_stock_data(ticker: str) -> str:
         except Exception:
             pe  = "N/A"
             eps = "N/A"
+
+        # yfinance's .info is heavily rate-limited on cloud IPs (Render), so
+        # pe/eps often come back as None/"N/A" even when fast_info succeeds.
+        # Fall back to Alpha Vantage's OVERVIEW endpoint (24h cached) to fill
+        # these in — keeps the compare table useful instead of all-N/A.
+        def _empty(v): return v in (None, "", "N/A", "None")
+        if _empty(pe) or _empty(eps):
+            try:
+                ov = av_get_overview(ticker) or {}
+                if _empty(pe)  and ov.get("pe")  is not None: pe  = ov["pe"]
+                if _empty(eps) and ov.get("eps") is not None: eps = ov["eps"]
+            except Exception:  # noqa: BLE001 — never let enrichment crash quote path
+                pass
 
         result = (
             f"Stock: {long_name} ({ticker})\n"

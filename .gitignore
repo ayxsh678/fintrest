@@ -18,3 +18,4 @@ backend/adapters/
 .env
 **/.env
 .claude/
+backend/finance-ai

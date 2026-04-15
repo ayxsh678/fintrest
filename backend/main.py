@@ -8,6 +8,7 @@ from rag.memory import create_session, get_history, append_to_history, clear_ses
 from rag.watchlist_enrich import enrich_watchlist
 from rag.alerts import create_alert, get_alerts, delete_alert, check_alerts
 from rag.sentiment import get_sentiment, get_news_impact
+from rag.eodhd import get_ohlc
 from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot, CURRENCY_PAIRS
 from model.inference import (
     generate_response, generate_portfolio_summary,
@@ -257,6 +258,26 @@ def stock(ticker: str):
     if not ticker_clean:
         raise HTTPException(status_code=400, detail="Ticker cannot be empty")
     return StockResponse(ticker=ticker_clean, data=get_stock_data(ticker_clean))
+
+
+# ── Chart (OHLC for self-hosted lightweight-charts) ────
+# Replaces the TradingView widget embed so we avoid TV's licensing popup on
+# NSE/BSE charts and keep chart data on the same trust boundary as the rest
+# of the app. Backed by EODHD and short-TTL cached in rag.eodhd.
+@app.get("/chart/{ticker}")
+def chart(ticker: str, days: int = 180):
+    ticker_clean = ticker.upper().strip()
+    if not ticker_clean:
+        raise HTTPException(status_code=400, detail="Ticker cannot be empty")
+    if not 5 <= days <= 730:
+        raise HTTPException(status_code=400, detail="days must be between 5 and 730")
+    rows = get_ohlc(ticker_clean, days=days)
+    if not rows:
+        # 200 with empty series + explicit ok:false so the frontend can render
+        # a graceful fallback without treating it as an HTTP failure (which
+        # would trip the Go gateway's 503 path and confuse error handling).
+        return {"ticker": ticker_clean, "ok": False, "rows": []}
+    return {"ticker": ticker_clean, "ok": True, "rows": rows}
 
 
 # ── Sentiment ──────────────────────────────────────────
