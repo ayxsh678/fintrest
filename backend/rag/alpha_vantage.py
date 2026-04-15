@@ -57,6 +57,33 @@ def get_quote(ticker: str) -> dict | None:
     return quote
 
 
+def get_avg_volume(ticker: str, days: int = 30) -> float | None:
+    """Return mean daily volume over the last `days` trading sessions, or None."""
+    if not AV_KEY:
+        return None
+    try:
+        resp = requests.get(
+            AV_URL,
+            params={
+                "function": "TIME_SERIES_DAILY",
+                "symbol": _av_symbol(ticker),
+                "outputsize": "compact",
+                "apikey": AV_KEY,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        series = (resp.json() or {}).get("Time Series (Daily)") or {}
+        volumes = [
+            float(v["5. volume"])
+            for _, v in sorted(series.items(), reverse=True)[:days]
+            if v.get("5. volume")
+        ]
+        return sum(volumes) / len(volumes) if volumes else None
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+
+
 def format_as_stock_data(ticker: str, quote: dict, symbol: str = "$",
                         label: str = "") -> str:
     pct = quote.get("change_pct")
