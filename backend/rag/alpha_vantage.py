@@ -20,7 +20,13 @@ _av_lock  = Lock()
 # Fundamentals change slowly; cache for 24h to stay well inside AV's free-tier
 # daily quota (500 requests/day) when many tickers are compared repeatedly.
 _ov_cache = TTLCache(maxsize=200, ttl=86_400)
+# Negative cache for failures / rate-limits: without this, every compare
+# retries the same throttled ticker on the next request and burns more
+# quota. 5 min is short enough to recover after AV's per-minute window
+# but long enough to dampen rapid re-renders.
+_ov_neg   = TTLCache(maxsize=400, ttl=300)
 _ov_lock  = Lock()
+_OV_MISS  = object()
 
 # Avg-volume cache shared for both direct callers (US tickers via get_quote)
 # and indirect ones (NSE tickers falling back through nse_quote._get_avg_volume).
@@ -110,6 +116,13 @@ def get_overview(ticker: str) -> dict | None:
     with _ov_lock:
         if cache_key in _ov_cache:
             return _ov_cache[cache_key]
+        if _ov_neg.get(cache_key, _OV_MISS) is not _OV_MISS:
+            return None  # recent failure; stay off AV to preserve quota
+
+    def _remember_miss():
+        with _ov_lock:
+            _ov_neg[cache_key] = None
+
     try:
         resp = requests.get(
             AV_URL,
@@ -120,10 +133,12 @@ def get_overview(ticker: str) -> dict | None:
         payload = resp.json()
         if not isinstance(payload, dict) or not payload:
             logger.info("AV overview: empty/unexpected payload for %s", ticker)
+            _remember_miss()
             return None
-        if "Note" in payload or "Error Message" in payload:
+        if "Note" in payload or "Error Message" in payload or "Information" in payload:
             logger.warning("AV overview: API message for %s: %s", ticker,
-                           payload.get("Note") or payload.get("Error Message"))
+                           payload.get("Note") or payload.get("Error Message") or payload.get("Information"))
+            _remember_miss()
             return None
         overview = {
             "pe":         _to_float(payload.get("PERatio")),
@@ -135,6 +150,7 @@ def get_overview(ticker: str) -> dict | None:
         }
     except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError) as exc:
         logger.warning("AV overview failed for %s: %s", ticker, exc)
+        _remember_miss()
         return None
 
     with _ov_lock:

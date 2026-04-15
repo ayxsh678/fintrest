@@ -11,7 +11,7 @@ from threading import Lock
 from datetime import datetime, timedelta
 
 from rag.alpha_vantage import get_avg_volume as av_get_avg_volume
-from rag.eodhd import get_avg_volume as eodhd_get_avg_volume
+from rag.eodhd import get_avg_volume as eodhd_get_avg_volume, get_ohlc as eodhd_get_ohlc
 
 logger = logging.getLogger(__name__)
 
@@ -188,12 +188,23 @@ def get_nse_quote(ticker: str) -> dict | None:
         except (TypeError, ValueError):
             today_vol = None
 
-        avg_vol = None
+        # NSE's quote-equity sometimes omits marketDeptOrderBook on Render
+        # egress IPs (different content than the browser receives). Without
+        # today_vol we can't compute rel_vol — so as a last resort, fall back
+        # to the latest daily volume from EODHD's OHLC series. Not live, but
+        # a close-enough proxy to keep the Rel Vol cell populated.
+        avg_vol = _get_avg_volume(session, symbol)
+        if today_vol is None:
+            try:
+                ohlc = eodhd_get_ohlc(symbol + ".NS", days=5)
+                if ohlc:
+                    today_vol = float(ohlc[-1].get("volume") or 0) or None
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("EODHD latest-volume fallback failed for %s: %s", symbol, exc)
+
         rel_vol = None
-        if today_vol is not None:
-            avg_vol = _get_avg_volume(session, symbol)
-            if avg_vol is not None and avg_vol > 0:
-                rel_vol = round(today_vol / avg_vol, 2)
+        if today_vol is not None and avg_vol is not None and avg_vol > 0:
+            rel_vol = round(today_vol / avg_vol, 2)
 
         quote = {
             "price": price,
