@@ -548,10 +548,12 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
 }
 
 // ── Main Chart ──────────────────────────────────────────
-function MainChart({ stock }) {
-  const data = generateChartData(stock.base, 60);
+function MainChart({ stock, isMobile = false }) {
   const isUp = (stock.change ?? 0) >= 0;
   const ts   = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
+  // Match the old 160px mobile / 200px desktop split so the surrounding
+  // card doesn't reflow on small screens.
+  const chartHeight = isMobile ? 160 : 200;
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -567,23 +569,10 @@ function MainChart({ stock }) {
           <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}% today</div>
         </div>
       </div>
-      <div style={{ width: "100%", height: 160 }}>
-        <ResponsiveContainer width="100%" height={160}>
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="mainGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0.25} />
-                <stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-            <XAxis dataKey="day" tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} interval={9} />
-            <YAxis tick={{ fill: "#8b949e", fontSize: 10 }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `${currencySymbol(stock.type)}${v.toLocaleString()}`} />
-            <Tooltip content={<CustomTooltip symbol={currencySymbol(stock.type)} />} />
-            <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={2} fill="url(#mainGrad)" dot={false} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      {/* Real OHLC via self-hosted lightweight-charts (same component used
+          in Compare). Replaces the old fake random-walk recharts chart that
+          appeared as a flat line because its Y-axis started at $0. */}
+      <TradingViewChart ticker={stock.ticker} height={chartHeight} />
     </div>
   );
 }
@@ -1112,7 +1101,7 @@ export default function App() {
         </>
       ) : (
         <>
-          <MainChart stock={selectedStock} />
+          <MainChart stock={selectedStock} isMobile={isMobile} />
           <SentimentGauge
             ticker={selectedStock.ticker}
             sentiment={sentiments[selectedStock.ticker] ?? null}

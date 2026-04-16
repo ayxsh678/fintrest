@@ -197,7 +197,16 @@ def get_nse_quote(ticker: str) -> dict | None:
             try:
                 ohlc = eodhd_get_ohlc(symbol + ".NS", days=5)
                 if ohlc:
-                    today_vol = float(ohlc[-1].get("volume") or 0) or None
+                    # Walk backwards to find the most recent row with a
+                    # positive volume — today's EOD data may not yet be
+                    # pushed by EODHD so the last row can have volume=0.
+                    # today_vol stays None if every row has volume <= 0.
+                    today_vol = None
+                    for row in reversed(ohlc):
+                        v = float(row.get("volume") or 0)
+                        if v > 0:
+                            today_vol = v
+                            break
             except Exception as exc:  # noqa: BLE001
                 logger.warning("EODHD latest-volume fallback failed for %s: %s", symbol, exc)
 
