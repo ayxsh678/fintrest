@@ -5,6 +5,7 @@ live price + sentiment snapshot for each. Routes India tickers (.NS/.BO) to
 get_india_stock_data and the rest to get_stock_data.
 """
 import concurrent.futures
+import logging
 import re
 
 from rag.retriever import get_stock_data, get_ohlc_yf
@@ -12,6 +13,9 @@ from rag.india_stocks import get_india_stock_data
 from rag.crypto import get_coin_id, get_crypto_data
 from rag.sentiment import get_sentiment
 from rag.eodhd import get_ohlc as eodhd_get_ohlc
+
+logger = logging.getLogger(__name__)
+_PER_TICKER_TIMEOUT_S = 8.0
 
 
 def _parse_price(raw: str) -> float | None:
@@ -68,6 +72,8 @@ def _get_sparkline(ticker: str, points: int = 30) -> list[float] | None:
 
 def _fetch_one(ticker: str) -> dict:
     kind = _classify(ticker)
+
+    # Price is the only mandatory field - if this fails the row is useless.
     try:
         if kind == "india":
             raw = get_india_stock_data(ticker)
@@ -75,9 +81,23 @@ def _fetch_one(ticker: str) -> dict:
             raw = get_crypto_data(get_coin_id(ticker.lower()))
         else:
             raw = get_stock_data(ticker)
-        sentiment = get_sentiment(ticker)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        logger.warning("enrich price fetch failed for %s: %s", ticker, e)
         return {"ticker": ticker, "type": kind, "error": str(e)}
+
+    # Sentiment + sparkline are best-effort. A slow or failing sentiment
+    # model shouldn't blank out the whole watchlist row.
+    try:
+        sentiment = get_sentiment(ticker)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("enrich sentiment failed for %s: %s", ticker, e)
+        sentiment = {"score": None, "label": None}
+
+    try:
+        sparkline = _get_sparkline(ticker)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("enrich sparkline failed for %s: %s", ticker, e)
+        sparkline = None
 
     return {
         "ticker": ticker,
@@ -86,10 +106,43 @@ def _fetch_one(ticker: str) -> dict:
         "change_5d_pct": _parse_change(raw),
         "sentiment_score": sentiment.get("score"),
         "sentiment_label": sentiment.get("label"),
-        "sparkline": _get_sparkline(ticker),
+        "sparkline": sparkline,
     }
 
 
 def enrich_watchlist(tickers: list[str]) -> list[dict]:
+    """Fan out per-ticker enrichment with a hard wall-clock budget.
+
+    Without a timeout the slowest ticker dictates end-to-end latency, which
+    routinely tripped the Go gateway's 30s client timeout and surfaced as
+    "Enrichment service unavailable" for the entire watchlist. We now
+    return placeholder rows for tickers that don't finish in time - the
+    frontend already renders those as "-".
+    """
+    if not tickers:
+        return []
+
+    by_ticker = {t: i for i, t in enumerate(tickers)}
+    results: list[dict] = [
+        {"ticker": t, "type": _classify(t), "error": "timeout"} for t in tickers
+    ]
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(tickers))) as ex:
-        return list(ex.map(_fetch_one, tickers))
+        futures = {ex.submit(_fetch_one, t): t for t in tickers}
+        try:
+            for fut in concurrent.futures.as_completed(
+                futures, timeout=_PER_TICKER_TIMEOUT_S * 2,
+            ):
+                t = futures[fut]
+                try:
+                    results[by_ticker[t]] = fut.result(timeout=0)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("enrich row failed for %s: %s", t, e)
+                    results[by_ticker[t]] = {
+                        "ticker": t, "type": _classify(t), "error": str(e),
+                    }
+        except concurrent.futures.TimeoutError:
+            logger.info(
+                "enrich: overall timeout after %.1fs; returning partial results",
+                _PER_TICKER_TIMEOUT_S * 2,
+            )
+    return results
