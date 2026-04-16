@@ -135,3 +135,65 @@ def get_crypto_news(coin_name: str) -> str:
         return ""
     except Exception:
         return ""
+
+# ── OHLC cache (added for /chart endpoint crypto routing) ──────────────
+# Bars move slower than spot price so a 10-min TTL is plenty and keeps us
+# well inside CoinGecko's free-tier rate limit.
+ohlc_cache = TTLCache(maxsize=100, ttl=600)
+ohlc_lock  = Lock()
+
+
+def get_crypto_ohlc(coin_id: str, days: int = 180) -> list[dict] | None:
+    """Return daily OHLC rows for a CoinGecko coin_id in the same shape
+    rag.eodhd.get_ohlc uses: {time (epoch sec), open, high, low, close, volume}.
+
+    CoinGecko's /coins/{id}/ohlc returns [[ms, o, h, l, c], ...]. It caps
+    the free tier at 365 days, so clamp `days`. We pair it with
+    /market_chart to get volume (the ohlc endpoint omits it).
+    """
+    days = max(1, min(days, 365))
+    cache_key = f"{coin_id}:{days}"
+    with ohlc_lock:
+        if cache_key in ohlc_cache:
+            return ohlc_cache[cache_key]
+
+    try:
+        ohlc_resp = requests.get(
+            f"{COINGECKO_BASE}/coins/{coin_id}/ohlc",
+            params={"vs_currency": "usd", "days": days},
+            timeout=8,
+        )
+        if ohlc_resp.status_code != 200:
+            return None
+        ohlc = ohlc_resp.json()
+        if not isinstance(ohlc, list) or not ohlc:
+            return None
+
+        vol_resp = requests.get(
+            f"{COINGECKO_BASE}/coins/{coin_id}/market_chart",
+            params={"vs_currency": "usd", "days": days, "interval": "daily"},
+            timeout=8,
+        )
+        vol_by_ts: dict[int, float] = {}
+        if vol_resp.status_code == 200:
+            mc = vol_resp.json() or {}
+            for ms, v in mc.get("total_volumes") or []:
+                vol_by_ts[int(ms // 1000)] = float(v)
+
+        rows: list[dict] = []
+        for ms, o, h, l, c in ohlc:
+            ts = int(ms // 1000)
+            rows.append({
+                "time":   ts,
+                "open":   float(o),
+                "high":   float(h),
+                "low":    float(l),
+                "close":  float(c),
+                "volume": vol_by_ts.get(ts, 0.0),
+            })
+    except (requests.RequestException, ValueError, TypeError, KeyError):
+        return None
+
+    with ohlc_lock:
+        ohlc_cache[cache_key] = rows
+    return rows

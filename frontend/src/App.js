@@ -736,8 +736,17 @@ export default function App() {
         const byTicker = Object.fromEntries(items.map(i => [i.ticker, i]));
         const updated = WATCHLIST_DEFAULT.map(stock => {
           const live = byTicker[stock.ticker];
-          if (!live || live.price == null) return stock;
-          return { ...stock, price: live.price, change: live.change_5d_pct ?? 0, base: live.price, sparkline: live.sparkline ?? null };
+          // Skip rows the backend flagged as errored/timed out, or where
+          // price fetch failed. Falling back to the placeholder stock
+          // keeps the UI showing "-" instead of a stale/zero value.
+          if (!live || live.error || live.price == null) return stock;
+          return {
+            ...stock,
+            price: live.price,
+            change: live.change_5d_pct ?? null,
+            base: live.price,
+            sparkline: live.sparkline ?? null,
+          };
         });
         setWatchlist(updated);
         setSelectedStock(prev => updated.find(s => s.ticker === prev.ticker) ?? prev);
