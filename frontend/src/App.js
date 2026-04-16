@@ -548,9 +548,12 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
 }
 
 // ── Main Chart ──────────────────────────────────────────
-function MainChart({ stock }) {
+function MainChart({ stock, isMobile = false }) {
   const isUp = (stock.change ?? 0) >= 0;
   const ts   = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
+  // Match the old 160px mobile / 200px desktop split so the surrounding
+  // card doesn't reflow on small screens.
+  const chartHeight = isMobile ? 160 : 200;
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -569,7 +572,7 @@ function MainChart({ stock }) {
       {/* Real OHLC via self-hosted lightweight-charts (same component used
           in Compare). Replaces the old fake random-walk recharts chart that
           appeared as a flat line because its Y-axis started at $0. */}
-      <TradingViewChart ticker={stock.ticker} height={200} />
+      <TradingViewChart ticker={stock.ticker} height={chartHeight} />
     </div>
   );
 }
@@ -1098,7 +1101,7 @@ export default function App() {
         </>
       ) : (
         <>
-          <MainChart stock={selectedStock} />
+          <MainChart stock={selectedStock} isMobile={isMobile} />
           <SentimentGauge
             ticker={selectedStock.ticker}
             sentiment={sentiments[selectedStock.ticker] ?? null}

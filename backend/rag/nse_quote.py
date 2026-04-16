@@ -200,6 +200,8 @@ def get_nse_quote(ticker: str) -> dict | None:
                     # Walk backwards to find the most recent row with a
                     # positive volume — today's EOD data may not yet be
                     # pushed by EODHD so the last row can have volume=0.
+                    # today_vol stays None if every row has volume <= 0.
+                    today_vol = None
                     for row in reversed(ohlc):
                         v = float(row.get("volume") or 0)
                         if v > 0:
