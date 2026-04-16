@@ -536,15 +536,36 @@ func main() {
 			return
 		}
 		defer resp.Body.Close()
+		// Cap at 4 MiB - a 2-year daily chart is ~60 KiB of JSON, so this
+		// is generous but prevents memory blow-ups on pathological upstreams.
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+		if readErr != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to read chart response"})
+			return
+		}
 		var result interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode chart data"})
+		if err := json.Unmarshal(body, &result); err != nil {
+			// Python hit an uncaught exception and FastAPI returned an
+			// HTML 500. Return a structured soft-failure so the frontend
+			// renders "Chart unavailable" instead of propagating a
+			// decode error.
+			snippet := string(body)
+			if len(snippet) > 200 {
+				snippet = snippet[:200]
+			}
+			log.Printf("chart: non-JSON upstream for %s (status %d): %s",
+				ticker, resp.StatusCode, snippet)
+			c.JSON(http.StatusOK, gin.H{
+				"ticker": ticker,
+				"ok":     false,
+				"rows":   []any{},
+				"source": nil,
+			})
 			return
 		}
 		// Propagate upstream status so the frontend can tell a soft
 		// empty-series response (Python returns 200 with ok:false) from
-		// a genuine upstream error (4xx/5xx). Without this, every
-		// failure mode collapsed to 200 and the UI couldn't react.
+		// a genuine upstream error (4xx/5xx).
 		c.JSON(resp.StatusCode, result)
 	})
 
@@ -633,6 +654,11 @@ func main() {
 	})
 
 	// ── Watchlist Enrich ───────────────────────────────
+	// Dedicated 90s client because enrich fans out N provider calls on
+	// the Python side. The shared 30s httpClient was tripping on cold
+	// Render instances and surfacing as "service unavailable" for the
+	// entire watchlist.
+	enrichClient := &http.Client{Timeout: 90 * time.Second}
 	r.POST("/watchlist/enrich", func(c *gin.Context) {
 		var req struct {
 			Tickers []string `json:"tickers" binding:"required"`
@@ -645,12 +671,31 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "tickers must be a non-empty array"})
 			return
 		}
-		result, err := proxyPost("/watchlist/enrich", req)
+		payload, err := json.Marshal(req)
 		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode request"})
+			return
+		}
+		httpReq, err := http.NewRequest(http.MethodPost,
+			pythonURL()+"/watchlist/enrich", bytes.NewBuffer(payload))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to build upstream request"})
+			return
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		resp, err := enrichClient.Do(httpReq)
+		if err != nil {
+			log.Printf("watchlist/enrich: upstream error: %v", err)
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Enrichment service unavailable"})
 			return
 		}
-		c.JSON(http.StatusOK, result)
+		defer resp.Body.Close()
+		var result interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Invalid enrichment response"})
+			return
+		}
+		c.JSON(resp.StatusCode, result)
 	})
 
 	// ── Session History ────────────────────────────────
