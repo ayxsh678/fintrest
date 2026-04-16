@@ -15,7 +15,7 @@ from rag.sentiment import get_sentiment
 from rag.eodhd import get_ohlc as eodhd_get_ohlc
 
 logger = logging.getLogger(__name__)
-_PER_TICKER_TIMEOUT_S = 8.0
+_BATCH_TIMEOUT_S = 20.0
 
 
 def _parse_price(raw: str) -> float | None:
@@ -111,38 +111,45 @@ def _fetch_one(ticker: str) -> dict:
 
 
 def enrich_watchlist(tickers: list[str]) -> list[dict]:
-    """Fan out per-ticker enrichment with a hard wall-clock budget.
+    """Fan out per-ticker enrichment under a batch wall-clock budget.
 
     Without a timeout the slowest ticker dictates end-to-end latency, which
     routinely tripped the Go gateway's 30s client timeout and surfaced as
     "Enrichment service unavailable" for the entire watchlist. We now
-    return placeholder rows for tickers that don't finish in time - the
-    frontend already renders those as "-".
+    return placeholder rows for any ticker that hasn't completed by the
+    time the budget elapses - the frontend already renders those as "-".
+
+    The budget is applied to the batch as a whole (via as_completed's
+    timeout) rather than per ticker. That's the cheapest correct behaviour
+    given ThreadPoolExecutor can't cancel already-running work on timeout.
     """
     if not tickers:
         return []
 
-    by_ticker = {t: i for i, t in enumerate(tickers)}
+    # Index results by *position* rather than by ticker string, so that a
+    # watchlist containing duplicate tickers still aligns 1:1 with the
+    # input list. (By-ticker indexing would collapse duplicates and leave
+    # earlier slots stuck as the timeout placeholder.)
     results: list[dict] = [
         {"ticker": t, "type": _classify(t), "error": "timeout"} for t in tickers
     ]
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(tickers))) as ex:
-        futures = {ex.submit(_fetch_one, t): t for t in tickers}
+        futures = {ex.submit(_fetch_one, t): i for i, t in enumerate(tickers)}
         try:
-            for fut in concurrent.futures.as_completed(
-                futures, timeout=_PER_TICKER_TIMEOUT_S * 2,
-            ):
-                t = futures[fut]
+            for fut in concurrent.futures.as_completed(futures, timeout=_BATCH_TIMEOUT_S):
+                idx = futures[fut]
                 try:
-                    results[by_ticker[t]] = fut.result(timeout=0)
+                    # as_completed guarantees fut is done, so no timeout here.
+                    results[idx] = fut.result()
                 except Exception as e:  # noqa: BLE001
+                    t = tickers[idx]
                     logger.warning("enrich row failed for %s: %s", t, e)
-                    results[by_ticker[t]] = {
+                    results[idx] = {
                         "ticker": t, "type": _classify(t), "error": str(e),
                     }
         except concurrent.futures.TimeoutError:
             logger.info(
-                "enrich: overall timeout after %.1fs; returning partial results",
-                _PER_TICKER_TIMEOUT_S * 2,
+                "enrich: batch timeout after %.1fs; returning partial results",
+                _BATCH_TIMEOUT_S,
             )
     return results
