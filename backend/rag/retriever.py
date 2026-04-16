@@ -38,8 +38,10 @@ earnings_cache  = TTLCache(maxsize=50,  ttl=3600)
 taketoday_cache = TTLCache(maxsize=50,  ttl=600)
 ohlc_cache      = TTLCache(maxsize=200, ttl=1_800)
 # PE and EPS change only with quarterly earnings; cache for 12 h so a
-# single successful AV OVERVIEW call survives many compare refreshes
-# without burning through the 25-calls/day free-tier quota.
+# single successful AV OVERVIEW call covers many compare refreshes within
+# the same process lifetime without burning through the 25-calls/day
+# free-tier quota. Being an in-memory TTLCache it does NOT persist across
+# process restarts — on a cold start the first compare will go to AV.
 fundamentals_cache = TTLCache(maxsize=200, ttl=43_200)
 
 stock_lock        = Lock()

@@ -52,11 +52,18 @@ def _get_sparkline(ticker: str, points: int = 30) -> list[float] | None:
     """
     try:
         rows = eodhd_get_ohlc(ticker, days=points + 5) or get_ohlc_yf(ticker, days=points + 5)
-        if rows:
-            return [r["close"] for r in rows[-points:]]
-    except Exception:  # noqa: BLE001
-        pass
-    return None
+        if not rows:
+            return None
+        closes: list[float] = []
+        for r in rows[-points:]:
+            if not isinstance(r, dict) or "close" not in r:
+                continue  # skip malformed rows rather than raising
+            closes.append(float(r["close"]))
+        return closes if len(closes) >= 2 else None
+    except (TypeError, ValueError, KeyError) as exc:
+        import logging
+        logging.getLogger(__name__).debug("sparkline fetch failed for %s: %s", ticker, exc)
+        return None
 
 
 def _fetch_one(ticker: str) -> dict:
