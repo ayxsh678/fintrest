@@ -37,12 +37,17 @@ news_cache      = TTLCache(maxsize=100, ttl=300)
 earnings_cache  = TTLCache(maxsize=50,  ttl=3600)
 taketoday_cache = TTLCache(maxsize=50,  ttl=600)
 ohlc_cache      = TTLCache(maxsize=200, ttl=1_800)
+# PE and EPS change only with quarterly earnings; cache for 12 h so a
+# single successful AV OVERVIEW call survives many compare refreshes
+# without burning through the 25-calls/day free-tier quota.
+fundamentals_cache = TTLCache(maxsize=200, ttl=43_200)
 
-stock_lock     = Lock()
-news_lock      = Lock()
-earnings_lock  = Lock()
-taketoday_lock = Lock()
-ohlc_lock      = Lock()
+stock_lock        = Lock()
+news_lock         = Lock()
+earnings_lock     = Lock()
+taketoday_lock    = Lock()
+ohlc_lock         = Lock()
+fundamentals_lock = Lock()
 
 
 # Map a requested day-window to the smallest yfinance `period` string that
@@ -247,27 +252,43 @@ def get_stock_data(ticker: str) -> str:
         week_low   = _fi("year_low",  "fifty_two_week_low")
         market_cap = int(_fi("market_cap", default=0) or 0)
 
-        # PE and EPS not in fast_info — attempt quietly, skip if rate limited
-        try:
-            info = stock.info
-            pe   = info.get("trailingPE",  "N/A")
-            eps  = info.get("trailingEps", "N/A")
-        except Exception:
+        def _empty(v): return v in (None, "", "N/A", "None")
+
+        # PE and EPS change only quarterly; pull from the 12h
+        # fundamentals_cache first so we don't burn AV quota on every
+        # compare. Cache is populated on the first successful resolution
+        # (yfinance or AV) and survives process restarts via the TTL.
+        with fundamentals_lock:
+            cached_fund = fundamentals_cache.get(ticker)
+
+        if cached_fund:
+            pe  = cached_fund.get("pe",  "N/A")
+            eps = cached_fund.get("eps", "N/A")
+        else:
             pe  = "N/A"
             eps = "N/A"
-
-        # yfinance's .info is heavily rate-limited on cloud IPs (Render), so
-        # pe/eps often come back as None/"N/A" even when fast_info succeeds.
-        # Fall back to Alpha Vantage's OVERVIEW endpoint (24h cached) to fill
-        # these in — keeps the compare table useful instead of all-N/A.
-        def _empty(v): return v in (None, "", "N/A", "None")
-        if _empty(pe) or _empty(eps):
+            # 1. Try yfinance .info (works when crumb is fresh)
             try:
-                ov = av_get_overview(ticker) or {}
-                if _empty(pe)  and ov.get("pe")  is not None: pe  = ov["pe"]
-                if _empty(eps) and ov.get("eps") is not None: eps = ov["eps"]
-            except Exception:  # noqa: BLE001 — never let enrichment crash quote path
+                info = stock.info
+                pe   = info.get("trailingPE",  "N/A")
+                eps  = info.get("trailingEps", "N/A")
+            except Exception:
                 pass
+
+            # 2. Fall back to AV OVERVIEW when yfinance is rate-limited
+            if _empty(pe) or _empty(eps):
+                try:
+                    ov = av_get_overview(ticker) or {}
+                    if _empty(pe)  and ov.get("pe")  is not None: pe  = ov["pe"]
+                    if _empty(eps) and ov.get("eps") is not None: eps = ov["eps"]
+                except Exception:  # noqa: BLE001
+                    pass
+
+            # 3. Store in 12h cache on any success so subsequent compares
+            #    don't need to touch AV again until the next earnings cycle.
+            if not _empty(pe) or not _empty(eps):
+                with fundamentals_lock:
+                    fundamentals_cache[ticker] = {"pe": pe, "eps": eps}
 
         result = (
             f"Stock: {long_name} ({ticker})\n"

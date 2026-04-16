@@ -507,7 +507,11 @@ const CustomTooltip = ({ active, payload, symbol = "$" }) => active && payload?.
 
 // ── Stock Card ──────────────────────────────────────────
 function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) {
-  const data = generateChartData(stock.base);
+  // Prefer real close-price sparkline from the enrich endpoint; fall back
+  // to the seeded random-walk only when no upstream data is available yet.
+  const data = Array.isArray(stock.sparkline) && stock.sparkline.length > 1
+    ? stock.sparkline.map((p, i) => ({ day: `D${i + 1}`, price: p }))
+    : generateChartData(stock.base);
   const isUp = stock.change >= 0;
   const ts   = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
   return (
@@ -538,6 +542,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
                 <stop offset="95%" stopColor={isUp ? "#3fb950" : "#f85149"} stopOpacity={0} />
               </linearGradient>
             </defs>
+            <YAxis domain={["auto", "auto"]} hide />
             <Area type="monotone" dataKey="price" stroke={isUp ? "#3fb950" : "#f85149"} strokeWidth={1.5} fill={`url(#g-${stock.ticker})`} dot={false} />
           </AreaChart>
         </ResponsiveContainer>
@@ -732,7 +737,7 @@ export default function App() {
         const updated = WATCHLIST_DEFAULT.map(stock => {
           const live = byTicker[stock.ticker];
           if (!live || live.price == null) return stock;
-          return { ...stock, price: live.price, change: live.change_5d_pct ?? 0, base: live.price };
+          return { ...stock, price: live.price, change: live.change_5d_pct ?? 0, base: live.price, sparkline: live.sparkline ?? null };
         });
         setWatchlist(updated);
         setSelectedStock(prev => updated.find(s => s.ticker === prev.ticker) ?? prev);
