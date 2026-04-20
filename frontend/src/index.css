@@ -1,15 +1,116 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Fintrest — Global Styles
+   Consumed across the whole app. Do not override colors here locally;
+   add new tokens to tokens.js and surface them here as CSS variables. */
+
+:root {
+  /* Surfaces */
+  --carbon:         #0F0F10;
+  --carbon-lifted:  #14181A;
+  --carbon-border:  #1C1F22;
+  --obsidian:       #0A0B0C;
+
+  /* Text */
+  --pearl:          #FAFAF7;
+  --mist:           #A6ADB4;
+  --fog:            #6B7178;
+
+  /* Accents */
+  --evergreen:      #1F5C46;
+  --evergreen-glow: rgba(31, 92, 70, 0.35);
+  --ember:          #B24A2A;
+
+  /* Utility */
+  --hairline:       rgba(250, 250, 247, 0.08);
+  --overlay:        rgba(5, 5, 6, 0.72);
+
+  /* Typography */
+  --font-editorial: "Fraunces", Georgia, serif;
+  --font-ui:        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:      "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Radii */
+  --radius-sm:      8px;
+  --radius-md:      12px;
+  --radius-lg:      16px;
+  --radius-pill:    999px;
+
+  /* Motion */
+  --ease-standard:  cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --ease-quint:     cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast:       160ms;
+  --dur-base:       240ms;
+  --dur-smooth:     280ms;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--obsidian);
+  color: var(--pearl);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+code { font-family: var(--font-mono); }
+
+/* Numbers should always be mono — opt in via .num */
+.num, .mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Editorial display — opt in via .editorial */
+.editorial {
+  font-family: var(--font-editorial);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.04;
+}
+
+/* Small-caps label */
+.label {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+/* Selection */
+::selection { background: var(--evergreen); color: var(--pearl); }
+
+/* Scrollbar — subtle on dark */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--carbon-border);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--fog); }
+
+/* Focus rings — accessible on dark */
+:focus-visible {
+  outline: 2px solid var(--pearl);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Visible focus + hover state for the chart's "open on TradingView"

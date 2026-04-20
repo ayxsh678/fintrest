@@ -3,6 +3,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid
 } from "recharts";
+import Aperture from "./Aperture";
 
 const API_URL = process.env.REACT_APP_API_URL || "https://fintrest-go.onrender.com";
 
@@ -628,7 +629,9 @@ function AuthModal({ onSuccess }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(1,4,9,0.92)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: 28, width: "100%", maxWidth: 360, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
-          <div style={{ width: 32, height: 32, background: "#f7c843", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💹</div>
+          <div style={{ width: 32, height: 32, background: "#0F0F10", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #1C1F22" }}>
+            <Aperture size={20} color="#FAFAF7" />
+          </div>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "#e6edf3" }}>Fintrest</div>
         </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
@@ -675,7 +678,7 @@ export default function App() {
 
   const [watchlist, setWatchlist]               = useState(WATCHLIST_DEFAULT);
   const [selectedStock, setSelectedStock]       = useState(WATCHLIST_DEFAULT[0]);
-  const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hello! I'm Fintrest, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto.", sources: [] }]);
+  const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hi, I'm Fintrest. Ask me about US stocks, Indian equities (NSE/BSE), or crypto — and I'll tell you what the numbers actually say.", sources: [] }]);
   const [input, setInput]                       = useState("");
   const [loading, setLoading]                   = useState(false);
   const [timeRange, setTimeRange]               = useState("7d");
@@ -1176,7 +1179,9 @@ export default function App() {
 
         <header style={{ borderBottom: "1px solid #21262d", padding: isMobile ? "10px 16px" : "12px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0d1117" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ background: "#f7c843", padding: "4px 8px", borderRadius: 8, color: "#0d1117" }}>💹</div>
+            <div style={{ background: "#0F0F10", padding: "4px 8px", borderRadius: 8, border: "1px solid #1C1F22", display: "flex", alignItems: "center" }}>
+              <Aperture size={18} color="#FAFAF7" />
+            </div>
             <span style={{ fontWeight: 700, fontSize: 18 }}>Fintrest</span>
           </div>
           <div style={{ display: "flex", gap: isMobile ? 6 : 10, flexShrink: 0 }}>

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fintrest — Aperture Mark v1.0
+  Three variations on a single artboard.
+  All geometry matches fintrest-aperture-spec.md §1.
+
+  BLADE UNIT CELL (used via <use href="#blade">):
+    V0 = (650.56, 432)      trailing-edge inner anchor (hexagon vertex at 30°)
+    O0 = (844.55, 320)      trailing-edge outer anchor (outer circle at 30°)
+    O1 = (512.00, 128)      leading-edge  outer anchor (outer circle at 90°)
+    V1 = (512.00, 352)      leading-edge  inner anchor (hexagon vertex at 90°)
+    Arc radius: 384
+    Cubic control points for the leading edge: (540, 220) and (580, 280)
+    Close segment V1→V0 is the hexagon edge (straight).
+
+  To rebuild the full aperture, <use> this blade and rotate by 60° × n around (512, 512).
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 3472 1324"
+     font-family="-apple-system, Inter, sans-serif">
+
+  <defs>
+    <!-- The blade unit cell. Do not edit. -->
+    <path id="blade"
+          d="M 650.56 432
+             L 844.55 320
+             A 384 384 0 0 0 512 128
+             C 540 220, 580 280, 512 352 Z" />
+
+    <!-- App-icon radial background (§3.2) -->
+    <radialGradient id="bgGradient" cx="50%" cy="40%" r="80%">
+      <stop offset="0%" stop-color="#14181A"/>
+      <stop offset="100%" stop-color="#0A0B0C"/>
+    </radialGradient>
+
+    <!-- Evergreen inner glow in the hexagonal void (§3.4) -->
+    <radialGradient id="innerGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1F5C46" stop-opacity="0.55"/>
+      <stop offset="60%" stop-color="#1F5C46" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#1F5C46" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Blade highlight for large renders (§3.5) -->
+    <linearGradient id="bladeHighlight" x1="20%" y1="20%" x2="80%" y2="80%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- The full 6-blade aperture as a reusable symbol -->
+    <g id="aperture">
+      <use href="#blade"/>
+      <use href="#blade" transform="rotate(60 512 512)"/>
+      <use href="#blade" transform="rotate(120 512 512)"/>
+      <use href="#blade" transform="rotate(180 512 512)"/>
+      <use href="#blade" transform="rotate(240 512 512)"/>
+      <use href="#blade" transform="rotate(300 512 512)"/>
+    </g>
+  </defs>
+
+  <!-- Page background -->
+  <rect width="3472" height="1324" fill="#050506"/>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       V1 — Solid Aperture (app-icon treatment)
+       ═══════════════════════════════════════════════════════════════ -->
+  <g id="variant-1-solid" transform="translate(100, 100)">
+    <!-- iOS rounded-rectangle mask preview (corner radius 229 on 1024) -->
+    <rect width="1024" height="1024" rx="229" ry="229" fill="url(#bgGradient)"/>
+    <!-- Inner evergreen glow in the hexagonal void -->
+    <circle cx="512" cy="512" r="240" fill="url(#innerGlow)"/>
+    <!-- The mark -->
+    <g fill="#FAFAF7">
+      <use href="#aperture"/>
+    </g>
+    <!-- Blade highlight pass -->
+    <g fill="url(#bladeHighlight)" style="mix-blend-mode: screen;">
+      <use href="#aperture"/>
+    </g>
+    <text x="512" y="1180" text-anchor="middle"
+          fill="#A6ADB4" font-size="36" letter-spacing="4">
+      V1 — SOLID APERTURE
+    </text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       V2 — Outlined Aperture (UI variant, 12px stroke @ 1024)
+       ═══════════════════════════════════════════════════════════════ -->
+  <g id="variant-2-outline" transform="translate(1224, 100)">
+    <rect width="1024" height="1024" rx="229" ry="229" fill="#0F0F10"/>
+    <g fill="none" stroke="#FAFAF7" stroke-width="12"
+       stroke-linejoin="miter" stroke-miterlimit="4">
+      <use href="#aperture"/>
+    </g>
+    <text x="512" y="1180" text-anchor="middle"
+          fill="#A6ADB4" font-size="36" letter-spacing="4">
+      V2 — OUTLINED
+    </text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       V3 — Single-Blade Glyph (reductive mark)
+       Rotated to the 150° position so the leading curve echoes
+       the descender of a lowercase "f" in "fintrest".
+       ═══════════════════════════════════════════════════════════════ -->
+  <g id="variant-3-single-blade" transform="translate(2348, 100)">
+    <rect width="1024" height="1024" rx="229" ry="229" fill="#0F0F10"/>
+    <use href="#blade" fill="#FAFAF7" transform="rotate(120 512 512)"/>
+    <text x="512" y="1180" text-anchor="middle"
+          fill="#A6ADB4" font-size="36" letter-spacing="4">
+      V3 — SINGLE BLADE
+    </text>
+  </g>
+
+</svg>
