@@ -194,3 +194,99 @@ def get_ohlc_yf(ticker: str, days: int = 180) -> dict:
     except Exception as e:
         print(f"[get_ohlc_yf] error for {ticker}: {e}")
         return {"ticker": ticker, "ok": False, "rows": [], "source": None}
+
+
+# ── Aliases & stubs for backward compatibility ─────────
+
+# Constants expected by portfolio.py and comparison.py
+COMPANY_MAP: dict[str, str] = {
+    "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL",
+    "alphabet": "GOOGL", "amazon": "AMZN", "meta": "META",
+    "tesla": "TSLA", "nvidia": "NVDA", "netflix": "NFLX",
+    "reliance": "RELIANCE.NS", "tcs": "TCS.NS", "infosys": "INFY.NS",
+    "wipro": "WIPRO.NS", "hdfc": "HDFCBANK.NS", "icici": "ICICIBANK.NS",
+    "sbi": "SBIN.NS", "bajaj": "BAJFINANCE.NS", "adani": "ADANIENT.NS",
+}
+
+KNOWN_TICKERS: list[str] = list(COMPANY_MAP.values())
+
+
+def get_financial_news(
+    ticker: str,
+    company_name: str = "",
+    days: int = 7
+) -> list[dict]:
+    """Alias for get_news_for_ticker — keeps main.py import working."""
+    return get_news_for_ticker(ticker, days=days, company_name=company_name)
+
+
+def get_earnings_data(ticker: str) -> dict:
+    """Fetch upcoming and historical earnings via yfinance."""
+    try:
+        t       = yf.Ticker(ticker)
+        cal     = t.calendar
+        info    = t.info
+
+        next_date = None
+        if cal is not None and not cal.empty:
+            try:
+                next_date = str(cal.iloc[0, 0].date())
+            except Exception:
+                pass
+
+        return {
+            "ticker":              ticker,
+            "next_earnings_date":  next_date,
+            "eps_estimate":        info.get("forwardEps"),
+            "eps_actual":          info.get("trailingEps"),
+            "revenue_estimate":    info.get("revenueEstimate"),
+            "pe_ratio":            info.get("trailingPE"),
+            "forward_pe":          info.get("forwardPE"),
+        }
+    except Exception as e:
+        print(f"[get_earnings_data] error for {ticker}: {e}")
+        return {"ticker": ticker, "error": "Earnings data unavailable"}
+
+
+def detect_asset_type(ticker: str) -> str:
+    """
+    Detect whether a ticker is a US stock, Indian stock, or crypto.
+    Returns: 'india', 'crypto', or 'us'
+    """
+    ticker = ticker.upper()
+    if ticker.endswith(".NS") or ticker.endswith(".BO"):
+        return "india"
+    crypto_symbols = {
+        "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE",
+        "MATIC", "DOT", "AVAX", "SHIB", "LTC", "UNI", "LINK"
+    }
+    if ticker in crypto_symbols:
+        return "crypto"
+    return "us"
+
+
+def get_ohlc_yf(ticker: str, days: int = 180) -> dict:
+    """OHLC candlestick data from yfinance."""
+    try:
+        t    = yf.Ticker(ticker)
+        hist = t.history(period=f"{days}d", interval="1d")
+
+        if hist.empty:
+            return {"ticker": ticker, "ok": False, "rows": [], "source": None}
+
+        rows = []
+        for date, row in hist.iterrows():
+            rows.append({
+                "time":   date.strftime("%Y-%m-%d"),
+                "open":   round(float(row["Open"]),  2),
+                "high":   round(float(row["High"]),  2),
+                "low":    round(float(row["Low"]),   2),
+                "close":  round(float(row["Close"]), 2),
+                "volume": int(row["Volume"])
+            })
+
+        return {"ticker": ticker, "ok": True, "rows": rows, "source": "Yahoo Finance"}
+
+    except Exception as e:
+        print(f"[get_ohlc_yf] error for {ticker}: {e}")
+        return {"ticker": ticker, "ok": False, "rows": [], "source": None}
