@@ -121,32 +121,39 @@ def get_stock_data(ticker: str) -> dict:
         t    = yf.Ticker(ticker)
         info = t.info
 
-        # 52W high/low and relative volume
-        hist     = t.history(period="5d", interval="1d")
-        avg_vol  = info.get("averageVolume") or 1
-        cur_vol  = info.get("regularMarketVolume") or 0
-        rel_vol  = round(cur_vol / avg_vol, 2) if avg_vol else None
+        # Fail fast if yfinance returns empty info (common on Render cold start)
+        if not info or not isinstance(info, dict):
+            return {"ticker": ticker, "error": "Stock data unavailable"}
 
-        # 5-day price change
+        # Get volume ratios from info directly — no extra HTTP call
+        avg_vol = info.get("averageVolume") or 1
+        cur_vol = info.get("regularMarketVolume") or 0
+        rel_vol = round(cur_vol / avg_vol, 2) if avg_vol else None
+
+        # 5-day change — wrap separately so timeout doesn't kill price data
         five_day_change = None
-        if len(hist) >= 2:
-            old = hist["Close"].iloc[0]
-            new = hist["Close"].iloc[-1]
-            five_day_change = round(((new - old) / old) * 100, 2) if old else None
+        try:
+            hist = t.history(period="5d", interval="1d", timeout=8)
+            if len(hist) >= 2:
+                old = hist["Close"].iloc[0]
+                new = hist["Close"].iloc[-1]
+                five_day_change = round(((new - old) / old) * 100, 2) if old else None
+        except Exception:
+            pass  # five_day_change stays None — price data still returns fine
 
         return {
-            "ticker":      ticker,
-            "name":        info.get("longName", ticker),
-            "price":       info.get("currentPrice") or info.get("regularMarketPrice"),
-            "change":      info.get("regularMarketChangePercent"),
+            "ticker":          ticker,
+            "name":            info.get("longName", ticker),
+            "price":           info.get("currentPrice") or info.get("regularMarketPrice"),
+            "change":          info.get("regularMarketChangePercent"),
             "five_day_change": five_day_change,
-            "market":      "NSE/BSE" if "." in ticker else "US",
-            "currency":    info.get("currency", "USD"),
-            "market_cap":  info.get("marketCap"),
-            "pe_ratio":    info.get("trailingPE"),
-            "week52_high": info.get("fiftyTwoWeekHigh"),
-            "week52_low":  info.get("fiftyTwoWeekLow"),
-            "rel_volume":  rel_vol,
+            "market":          "NSE/BSE" if "." in ticker else "US",
+            "currency":        info.get("currency", "USD"),
+            "market_cap":      info.get("marketCap"),
+            "pe_ratio":        info.get("trailingPE"),
+            "week52_high":     info.get("fiftyTwoWeekHigh"),
+            "week52_low":      info.get("fiftyTwoWeekLow"),
+            "rel_volume":      rel_vol,
         }
     except Exception as e:
         print(f"[yfinance] error for {ticker}: {e}")
