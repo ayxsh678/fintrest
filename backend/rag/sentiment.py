@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import json
 import random
 import threading
@@ -61,13 +62,34 @@ def _is_financial(title: str, description: str) -> bool:
     return any(signal in text for signal in FINANCIAL_SIGNALS)
 
 
+def _mentions_company(text: str, company_name: str, base_ticker: str) -> bool:
+    """
+    Word-boundary match — prevents 'reliance on data' matching Reliance Industries.
+    Also accepts the raw ticker symbol as a fallback.
+    """
+    text_lower = text.lower()
+
+    # Exact ticker match (e.g. "RELIANCE", "TCS")
+    if base_ticker.lower() in text_lower:
+        # Must appear as a whole word or uppercase — not inside another word
+        if re.search(r'\b' + re.escape(base_ticker.lower()) + r'\b', text_lower):
+            return True
+
+    # Company name whole-word match (e.g. "Reliance Industries" not "reliance on")
+    if len(company_name) >= 5:  # skip very short names that are common words
+        pattern = r'\b' + re.escape(company_name.lower()) + r'\b'
+        if re.search(pattern, text_lower):
+            return True
+
+    return False
+
+
 def _groq_post(payload: dict) -> dict | None:
-    """Shared Groq HTTP call with retry logic. Returns parsed JSON or None."""
+    """Shared Groq HTTP call with retry. Returns parsed JSON or None."""
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type":  "application/json",
     }
-    resp = None
     for attempt in range(MAX_RETRIES):
         try:
             resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
@@ -105,7 +127,7 @@ def _fetch_articles_detailed(
     days: int = 7
 ) -> list[dict]:
     articles    = []
-    base_ticker = ticker.split(".")[0]
+    base_ticker = ticker.split(".")[0]  # RELIANCE.NS → RELIANCE
     is_indian   = ticker.endswith(".NS") or ticker.endswith(".BO")
     end_date    = datetime.utcnow().strftime("%Y-%m-%d")
     start_date  = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -133,10 +155,8 @@ def _fetch_articles_detailed(
                     desc  = (item.get("summary") or "").strip()
                     if not title or title == "[Removed]":
                         continue
-                    # Must mention company name or ticker
                     combined = (title + " " + desc).lower()
-                    if (search_term.lower() not in combined and
-                            base_ticker.lower() not in combined):
+                    if not _mentions_company(combined, search_term, base_ticker):
                         continue
                     articles.append({
                         "title":        title,
@@ -154,7 +174,7 @@ def _fetch_articles_detailed(
     if not articles:
         api_key = os.getenv("NEWS_API_KEY", "")
         if api_key:
-            # Tighter query for Indian stocks — avoids generic "reliance" matches
+            # Tighter query for Indian stocks
             if is_indian:
                 query = (
                     f'"{search_term}" '
@@ -186,10 +206,9 @@ def _fetch_articles_detailed(
                     desc  = (a.get("description") or "").strip()
                     if not title or title == "[Removed]":
                         continue
-                    # Must actually mention the company — prevents generic matches
                     combined = (title + " " + desc).lower()
-                    if (search_term.lower() not in combined and
-                            base_ticker.lower() not in combined):
+                    # Word-boundary check — blocks "reliance on data" style false matches
+                    if not _mentions_company(combined, search_term, base_ticker):
                         continue
                     articles.append({
                         "title":        title,
@@ -211,7 +230,7 @@ def _fetch_articles_detailed(
 
 
 def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
-    articles = _fetch_articles_detailed(ticker, company_name, days=3)
+    articles  = _fetch_articles_detailed(ticker, company_name, days=3)
     headlines = []
     for a in articles:
         title = a.get("title", "")
