@@ -1,520 +1,163 @@
-import time
 import os
-import re
 import requests
-import feedparser
-import yfinance as yf
-import pandas as pd
-
-# Fix Yahoo Finance 401 crumb errors on cloud servers
-yf.set_tz_cache_location("/tmp/yfinance_cache")
-_yf_session = requests.Session()
-_yf_session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-})
 from datetime import datetime, timedelta
-from cachetools import TTLCache
-from threading import Lock
-from rag.crypto import get_coin_id, get_crypto_data, get_crypto_news, KNOWN_COINS
-from rag.india_stocks import extract_india_ticker, get_india_stock_data, INDIA_COMPANY_MAP
-from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot
-from rag.alpha_vantage import (
-    get_quote as av_get_quote,
-    get_overview as av_get_overview,
-    format_as_stock_data as av_format,
-)
-from rag.eodhd import get_avg_volume as eodhd_get_avg_volume
+import yfinance as yf
 
-NEWS_API_KEY     = os.getenv("NEWS_API_KEY")
-TAKETODAY_FEED   = "https://taketoday.co/feed"
-TAKETODAY_WP_API = "https://taketoday.co/wp-json/wp/v2/posts"
+FINNHUB_KEY = os.getenv("FINNHUB_API_KEY")
+NEWSAPI_KEY  = os.getenv("NEWS_API_KEY")
 
-# ── Cache setup ────────────────────────────────────────
-stock_cache     = TTLCache(maxsize=50,  ttl=300)
-news_cache      = TTLCache(maxsize=100, ttl=300)
-earnings_cache  = TTLCache(maxsize=50,  ttl=3600)
-taketoday_cache = TTLCache(maxsize=50,  ttl=600)
-ohlc_cache      = TTLCache(maxsize=200, ttl=1_800)
-# PE and EPS change only with quarterly earnings; cache for 12 h so a
-# single successful AV OVERVIEW call covers many compare refreshes within
-# the same process lifetime without burning through the 25-calls/day
-# free-tier quota. Being an in-memory TTLCache it does NOT persist across
-# process restarts — on a cold start the first compare will go to AV.
-fundamentals_cache = TTLCache(maxsize=200, ttl=43_200)
+# ── News ───────────────────────────────────────────────
 
-stock_lock        = Lock()
-news_lock         = Lock()
-earnings_lock     = Lock()
-taketoday_lock    = Lock()
-ohlc_lock         = Lock()
-fundamentals_lock = Lock()
-
-
-# Map a requested day-window to the smallest yfinance `period` string that
-# comfortably covers it — we overshoot a little so weekends/holidays don't
-# leave the chart sparse at the tail. Sorted ascending; first threshold
-# whose ceiling is >= days wins.
-_YF_PERIOD_THRESHOLDS = [
-    (60,  "3mo"),
-    (180, "6mo"),
-    (365, "1y"),
-]
-_YF_PERIOD_FALLBACK = "2y"
-
-
-def _yf_period_for(days: int) -> str:
-    for ceiling, period in _YF_PERIOD_THRESHOLDS:
-        if days <= ceiling:
-            return period
-    return _YF_PERIOD_FALLBACK
-
-
-def get_ohlc_yf(ticker: str, days: int = 180) -> list[dict] | None:
-    """yfinance-backed OHLC fallback when EODHD is unavailable / out of plan.
-
-    .history() hits Yahoo's chart endpoint, which doesn't require the crumb
-    cookie that breaks .info on cloud IPs — so it tends to keep working
-    even when everything else in yfinance fails with 401. Returns the
-    same shape rag.eodhd.get_ohlc does: {time (epoch sec), open, high,
-    low, close, volume}.
+def get_news_for_ticker(
+    ticker: str,
+    days: int = 7,
+    company_name: str = ""
+) -> list[dict]:
     """
-    cache_key = f"{ticker}:{days}"
-    with ohlc_lock:
-        if cache_key in ohlc_cache:
-            return ohlc_cache[cache_key]
-    try:
-        hist = yf.Ticker(ticker).history(period=_yf_period_for(days))
-        if hist is None or hist.empty:
-            return None
-        rows = []
-        for idx, row in hist.iterrows():
-            try:
-                ts = int(pd.Timestamp(idx).timestamp())
-                close = float(row["Close"])
-                rows.append({
-                    "time":   ts,
-                    "open":   float(row.get("Open",  close)),
-                    "high":   float(row.get("High",  close)),
-                    "low":    float(row.get("Low",   close)),
-                    "close":  close,
-                    "volume": float(row.get("Volume", 0) or 0),
-                })
-            except (TypeError, ValueError, KeyError):
-                continue
-        rows.sort(key=lambda r: r["time"])
-        rows = rows[-days:]
-        if not rows:
-            return None
-    except Exception:  # noqa: BLE001 — broad so yfinance internals never 500 the chart path
-        return None
+    Fetch real financial headlines for a ticker.
+    Tries Finnhub first (finance-native), falls back to NewsAPI.
+    Filters out non-financial articles (deals, gadget reviews, etc.)
+    """
+    articles = []
+    end_date   = datetime.now().strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    with ohlc_lock:
-        ohlc_cache[cache_key] = rows
-    return rows
+    # Strip exchange suffix: RELIANCE.NS → RELIANCE
+    base_ticker = ticker.split(".")[0]
 
-TIME_RANGE_MAP = {
-    "24h": 1, "3d": 3, "7d": 7, "30d": 30, "1y": 365
-}
-
-# ── US company map ─────────────────────────────────────
-COMPANY_MAP = {
-    "apple": "AAPL", "tesla": "TSLA", "google": "GOOGL",
-    "alphabet": "GOOGL", "microsoft": "MSFT", "amazon": "AMZN",
-    "meta": "META", "facebook": "META", "nvidia": "NVDA",
-    "netflix": "NFLX", "jpmorgan": "JPM", "jp morgan": "JPM",
-    "j.p. morgan": "JPM", "bank of america": "BAC", "walmart": "WMT",
-    "visa": "V", "mastercard": "MA", "berkshire": "BRK-B",
-    "amd": "AMD", "intel": "INTC", "qualcomm": "QCOM",
-    "salesforce": "CRM", "oracle": "ORCL", "adobe": "ADBE",
-    "paypal": "PYPL", "shopify": "SHOP", "uber": "UBER",
-    "airbnb": "ABNB", "spotify": "SPOT", "snap": "SNAP",
-    "twitter": "X", "coinbase": "COIN", "robinhood": "HOOD",
-}
-
-KNOWN_TICKERS = set(COMPANY_MAP.values()) | {
-    "AAPL", "TSLA", "GOOGL", "MSFT", "AMZN", "META", "NVDA",
-    "NFLX", "JPM", "BAC", "WMT", "V", "MA", "AMD", "INTC",
-    "QCOM", "CRM", "ORCL", "ADBE", "PYPL", "SHOP", "UBER",
-    "ABNB", "SPOT", "SNAP", "COIN", "HOOD",
-}
-
-
-# ── Asset type detection ───────────────────────────────
-
-def detect_asset_type(query: str) -> dict:
-    query_lower = query.lower()
-
-    # Forex first
-    forex_pair = detect_forex_query(query)
-    if forex_pair:
-        return {"type": "forex", "identifier": forex_pair}
-
-    # Crypto keywords
-    crypto_keywords = ["crypto", "bitcoin", "ethereum", "coin", "token",
-                       "blockchain", "defi", "nft", "web3", "binance",
-                       "coindcx", "wazirx"]
-    if any(kw in query_lower for kw in crypto_keywords):
-        coin_id = get_coin_id(query_lower)
-        if coin_id:
-            return {"type": "crypto", "identifier": coin_id}
-
-    for word in query_lower.split():
-        coin_id = get_coin_id(word)
-        if coin_id:
-            return {"type": "crypto", "identifier": coin_id}
-
-    # India stock keywords
-    india_keywords = ["nse", "bse", "nifty", "sensex", "rupee", "inr",
-                      "india", "indian", ".ns", ".bo"]
-    if any(kw in query_lower for kw in india_keywords):
-        ticker = extract_india_ticker(query)
-        if ticker:
-            return {"type": "india_stock", "identifier": ticker}
-
-    india_ticker = extract_india_ticker(query)
-    if india_ticker:
-        return {"type": "india_stock", "identifier": india_ticker}
-
-    us_ticker = extract_us_ticker(query)
-    if us_ticker:
-        return {"type": "us_stock", "identifier": us_ticker}
-
-    return {"type": "unknown", "identifier": None}
-
-
-def extract_us_ticker(query: str) -> str | None:
-    query_lower = query.lower()
-    for name in sorted(COMPANY_MAP, key=len, reverse=True):
-        if name in query_lower:
-            return COMPANY_MAP[name]
-    for word in query.upper().split():
-        clean = re.sub(r"[^A-Z]", "", word)
-        if clean in KNOWN_TICKERS:
-            return clean
-    return None
-
-
-def extract_ticker(query: str) -> str | None:
-    return extract_us_ticker(query)
-
-
-# ── Stock data (US) ────────────────────────────────────
-
-def get_stock_data(ticker: str) -> str:
-    with stock_lock:
-        if ticker in stock_cache:
-            return stock_cache[ticker]
-    try:
-        time.sleep(0.5)  # prevent Yahoo Finance rate limiting
-        stock = yf.Ticker(ticker)
-
-        # fast_info is lighter and less rate-limited than stock.info
-        fi   = stock.fast_info
-        hist     = stock.history(period="5d")
-        hist_30d = stock.history(period="30d")
-
-        if hist.empty:
-            return f"No price history found for {ticker}."
-
-        first_close = hist["Close"].iloc[0]
-        change_pct = (
-            (hist["Close"].iloc[-1] - first_close) / first_close * 100
-            if first_close else 0.0
-        )
-        avg_volume_30d = hist_30d["Volume"].mean() if not hist_30d.empty else 0
-        latest_volume  = hist["Volume"].iloc[-1]
-        rel_volume = (
-            f"{latest_volume / avg_volume_30d:.2f}x"
-            if avg_volume_30d > 0 else "N/A"
-        )
-
-        # fast_info doesn't have longName — fall back to ticker
+    # ── Source 1: Finnhub (purpose-built for stocks, free tier) ──
+    if FINNHUB_KEY:
         try:
-            long_name = stock.info.get("longName", ticker)
-        except Exception:
-            long_name = ticker
-
-        def _fi(*names, default="N/A"):
-            for n in names:
-                try:
-                    v = getattr(fi, n, None)
-                    if v is None:
-                        v = fi[n] if n in fi else None
-                except (KeyError, AttributeError, TypeError):
-                    v = None
-                if v not in (None, ""):
-                    return v
-            return default
-
-        price      = _fi("last_price")
-        prev_close = _fi("previous_close")
-        week_high  = _fi("year_high", "fifty_two_week_high")
-        week_low   = _fi("year_low",  "fifty_two_week_low")
-        market_cap = int(_fi("market_cap", default=0) or 0)
-
-        def _empty(v): return v in (None, "", "N/A", "None")
-
-        # PE and EPS change only quarterly; pull from the 12h
-        # fundamentals_cache first so we don't burn AV quota on every
-        # compare. Cache is populated on the first successful resolution
-        # (yfinance or AV) and survives process restarts via the TTL.
-        with fundamentals_lock:
-            cached_fund = fundamentals_cache.get(ticker)
-
-        if cached_fund:
-            pe  = cached_fund.get("pe",  "N/A")
-            eps = cached_fund.get("eps", "N/A")
-        else:
-            pe  = "N/A"
-            eps = "N/A"
-            # 1. Try yfinance .info (works when crumb is fresh)
-            try:
-                info = stock.info
-                pe   = info.get("trailingPE",  "N/A")
-                eps  = info.get("trailingEps", "N/A")
-            except Exception:
-                pass
-
-            # 2. Fall back to AV OVERVIEW when yfinance is rate-limited
-            if _empty(pe) or _empty(eps):
-                try:
-                    ov = av_get_overview(ticker) or {}
-                    if _empty(pe)  and ov.get("pe")  is not None: pe  = ov["pe"]
-                    if _empty(eps) and ov.get("eps") is not None: eps = ov["eps"]
-                except Exception:  # noqa: BLE001
-                    pass
-
-            # 3. Store in 12h cache on any success so subsequent compares
-            #    don't need to touch AV again until the next earnings cycle.
-            if not _empty(pe) or not _empty(eps):
-                with fundamentals_lock:
-                    fundamentals_cache[ticker] = {"pe": pe, "eps": eps}
-
-        result = (
-            f"Stock: {long_name} ({ticker})\n"
-            f"Current Price: ${price}\n"
-            f"Previous Close: ${prev_close}\n"
-            f"52W High: ${week_high}\n"
-            f"52W Low: ${week_low}\n"
-            f"P/E Ratio: {pe}\n"
-            f"Market Cap: ${market_cap:,}\n"
-            f"EPS: {eps}\n"
-            f"5-Day Change: {change_pct:.2f}%\n"
-            f"Latest Volume: {int(latest_volume):,}\n"
-            f"30D Avg Volume: {int(avg_volume_30d):,}\n"
-            f"Relative Volume: {rel_volume}"
-        )
-    except Exception as e:
-        av_quote = av_get_quote(ticker)
-        if av_quote:
-            result = av_format(ticker, av_quote, symbol="$")
-        else:
-            result = f"Stock data unavailable: {str(e)}"
-
-    with stock_lock:
-        stock_cache[ticker] = result
-    return result
-
-# ── NewsAPI ────────────────────────────────────────────
-
-def get_financial_news(query: str, ticker: str = None,
-                        time_range: str = "7d") -> str:
-    cache_key = f"{ticker or query}_{time_range}"
-    with news_lock:
-        if cache_key in news_cache:
-            return news_cache[cache_key]
-
-    if not NEWS_API_KEY:
-        return "News unavailable: NEWS_API_KEY not set."
-
-    days      = TIME_RANGE_MAP.get(time_range, 7)
-    from_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-    try:
-        response = requests.get(
-            "https://newsapi.org/v2/everything",
-            params={
-                "q": ticker or query,
-                "apiKey": NEWS_API_KEY,
-                "language": "en",
-                "sortBy": "relevancy",
-                "pageSize": 5,
-                "from": from_date,
-            },
-            headers={"User-Agent": "FinanceAI/1.0"},
-            timeout=10
-        )
-        response.raise_for_status()
-        data     = response.json()
-        articles = data.get("articles", [])
-
-        if not articles:
-            return f"No news found for '{ticker or query}' in last {time_range}."
-
-        lines = [f"Recent Financial News (last {time_range}):"]
-        for i, article in enumerate(articles, 1):
-            try:
-                pub   = datetime.strptime(article["publishedAt"][:19], "%Y-%m-%dT%H:%M:%S")
-                delta = datetime.utcnow() - pub
-                age   = f"{delta.seconds // 3600}h ago" if delta.days == 0 else f"{delta.days}d ago"
-            except Exception:
-                age = article["publishedAt"][:10]
-            lines.append(
-                f"{i}. {article['title']}\n"
-                f"   {article['source']['name']} | {age}"
+            resp = requests.get(
+                "https://finnhub.io/api/v1/company-news",
+                params={
+                    "symbol": base_ticker,
+                    "from":   start_date,
+                    "to":     end_date,
+                    "token":  FINNHUB_KEY
+                },
+                timeout=10
             )
-        result = "\n".join(lines)
+            data = resp.json()
+            if isinstance(data, list):
+                for item in data[:15]:
+                    articles.append({
+                        "title":        item.get("headline", ""),
+                        "summary":      item.get("summary", ""),
+                        "source":       item.get("source", ""),
+                        "url":          item.get("url", ""),
+                        "published_at": datetime.fromtimestamp(
+                            item.get("datetime", 0)
+                        ).strftime("%Y-%m-%d")
+                    })
+        except Exception as e:
+            print(f"[Finnhub] error for {ticker}: {e}")
 
-    except requests.exceptions.Timeout:
-        result = "News unavailable: request timed out."
-    except requests.exceptions.HTTPError as e:
-        result = f"News unavailable: HTTP {e.response.status_code}"
-    except Exception as e:
-        result = f"News unavailable: {str(e)}"
-
-    with news_lock:
-        news_cache[cache_key] = result
-    return result
-
-
-# ── TakeToday ──────────────────────────────────────────
-
-def get_taketoday_news(query: str) -> str:
-    cache_key = query.lower().strip()
-    with taketoday_lock:
-        if cache_key in taketoday_cache:
-            return taketoday_cache[cache_key]
-
-    result = _fetch_taketoday_wp(query) or _fetch_taketoday_rss(query) or ""
-
-    with taketoday_lock:
-        taketoday_cache[cache_key] = result
-    return result
-
-
-def _fetch_taketoday_wp(query: str) -> str:
-    try:
-        response = requests.get(
-            TAKETODAY_WP_API,
-            params={"search": query, "per_page": 3,
-                    "_fields": "title,excerpt,date,link"},
-            timeout=8
-        )
-        response.raise_for_status()
-        articles = response.json()
-        if not articles:
-            return ""
-        lines = ["TakeToday (verified source):"]
-        for article in articles:
-            title   = re.sub(r"<[^>]+>", "", article["title"]["rendered"]).strip()
-            excerpt = re.sub(r"<[^>]+>", "", article["excerpt"]["rendered"]).strip()[:120]
-            date    = article["date"][:10]
-            lines.append(f"- {title} ({date})\n  {excerpt}...")
-        return "\n".join(lines)
-    except Exception:
-        return ""
-
-
-def _fetch_taketoday_rss(query: str) -> str:
-    try:
-        feed        = feedparser.parse(TAKETODAY_FEED)
-        query_words = [w for w in query.lower().split() if len(w) > 3]
-        relevant    = [
-            entry for entry in feed.entries
-            if any(
-                word in entry.get("title", "").lower() or
-                word in entry.get("summary", "").lower()
-                for word in query_words
+    # ── Source 2: NewsAPI fallback ─────────────────────
+    if not articles and NEWSAPI_KEY:
+        search_term = company_name if company_name else base_ticker
+        try:
+            resp = requests.get(
+                "https://newsapi.org/v2/everything",
+                params={
+                    "q":        f'"{search_term}" (stock OR earnings OR revenue OR shares OR NSE OR BSE)',
+                    "sortBy":   "publishedAt",
+                    "language": "en",
+                    "pageSize": 15,
+                    "from":     start_date,
+                    "apiKey":   NEWSAPI_KEY
+                },
+                timeout=10
             )
-        ][:3]
-        if not relevant:
-            return ""
-        lines = ["TakeToday (verified source):"]
-        for entry in relevant:
-            summary   = re.sub(r"<[^>]+>", "", entry.get("summary", "")).strip()[:120]
-            published = entry.get("published", "")[:10]
-            lines.append(f"- {entry.title} ({published})\n  {summary}...")
-        return "\n".join(lines)
-    except Exception:
-        return ""
+            data = resp.json()
+            for item in data.get("articles", []):
+                articles.append({
+                    "title":        item.get("title", ""),
+                    "summary":      item.get("description", "") or "",
+                    "source":       item.get("source", {}).get("name", ""),
+                    "url":          item.get("url", ""),
+                    "published_at": (item.get("publishedAt", "") or "")[:10]
+                })
+        except Exception as e:
+            print(f"[NewsAPI] error for {ticker}: {e}")
+
+    # ── Filter: keep only financially relevant articles ──
+    FINANCIAL_SIGNALS = [
+        "earnings", "revenue", "profit", "loss", "quarterly", "annual",
+        "dividend", "buyback", "guidance", "analyst", "upgrade", "downgrade",
+        "target price", "ipo", "results", "margin", "outlook", "forecast",
+        "merger", "acquisition", "stake", "shares", "market cap",
+        # Indian market specific
+        "nse", "bse", "sensex", "nifty", "crore", "lakh", "sebi",
+        "promoter", "roe", "ebitda", "pat", "q1", "q2", "q3", "q4",
+    ]
+
+    # Explicit noise patterns to drop
+    NOISE_PATTERNS = [
+        "deals of the week", "best deals", "% off", "discount",
+        "review:", "hands-on", "how to use", "tips and tricks",
+    ]
+
+    filtered = []
+    for a in articles:
+        text = (a["title"] + " " + a["summary"]).lower()
+
+        # Drop clear noise
+        if any(noise in text for noise in NOISE_PATTERNS):
+            continue
+
+        # Keep if contains financial signal
+        if any(signal in text for signal in FINANCIAL_SIGNALS):
+            filtered.append(a)
+
+    # Fallback: if filter is too aggressive, return top 5 unfiltered
+    return filtered[:10] if filtered else articles[:5]
 
 
-# ── Earnings ───────────────────────────────────────────
+# ── Stock ──────────────────────────────────────────────
 
-def get_earnings_data(ticker: str) -> str:
-    with earnings_lock:
-        if ticker in earnings_cache:
-            return earnings_cache[ticker]
-
+def get_stock_data(ticker: str) -> dict:
     try:
-        stock    = yf.Ticker(ticker)
-        calendar = stock.calendar
-
-        if calendar is None:
-            return "No upcoming earnings schedule."
-
-        if isinstance(calendar, dict):
-            if not calendar:
-                return "No upcoming earnings schedule."
-            lines = [f"Earnings Schedule for {ticker}:"]
-            for key, value in calendar.items():
-                lines.append(f"- {key}: {value}")
-            result = "\n".join(lines)
-        elif isinstance(calendar, pd.DataFrame):
-            if calendar.empty:
-                return "No upcoming earnings schedule."
-            lines = [f"Earnings Schedule for {ticker}:"]
-            for index, row in calendar.iterrows():
-                lines.append(f"- {index}: {row.values[0]}")
-            result = "\n".join(lines)
-        else:
-            result = "Earnings data format unrecognized."
-
-    except Exception:
-        result = "Earnings data currently unavailable."
-
-    with earnings_lock:
-        earnings_cache[ticker] = result
-    return result
+        t = yf.Ticker(ticker)
+        info = t.info
+        return {
+            "ticker":   ticker,
+            "name":     info.get("longName", ticker),
+            "price":    info.get("currentPrice") or info.get("regularMarketPrice"),
+            "change":   info.get("regularMarketChangePercent"),
+            "market":   "NSE/BSE" if "." in ticker else "US",
+            "currency": info.get("currency", "USD"),
+        }
+    except Exception as e:
+        print(f"[yfinance] error for {ticker}: {e}")
+        return {"ticker": ticker, "error": "Stock data unavailable"}
 
 
-# ── Context assembly ───────────────────────────────────
+# ── Context builder (used by /ask) ─────────────────────
 
-def build_context(query: str, time_range: str = "7d") -> str:
-    asset      = detect_asset_type(query)
-    asset_type = asset["type"]
-    identifier = asset["identifier"]
-
-    taketoday     = get_taketoday_news(query)
-    news          = get_financial_news(query, identifier, time_range=time_range)
+def build_context(question: str, time_range: str = "7d") -> str:
+    """
+    Assembles RAG context string for the /ask endpoint.
+    Existing logic — keep as-is.
+    """
     context_parts = []
 
-    if taketoday:
-        context_parts.append(taketoday)
-    if news:
-        context_parts.append(news)
+    # Extract ticker from question if present
+    import re
+    tickers = re.findall(r'\b[A-Z]{2,5}(?:\.[A-Z]{2})?\b', question)
 
-    if asset_type == "forex":
-        if identifier == "ALL":
-            context_parts.append(get_all_forex_snapshot())
-        else:
-            context_parts.append(get_forex_data(identifier))
+    for ticker in tickers[:2]:  # cap at 2 tickers per query
+        stock = get_stock_data(ticker)
+        if "error" not in stock:
+            context_parts.append(
+                f"Stock: {ticker} | Price: {stock.get('price')} | "
+                f"Change: {stock.get('change', 0):.2f}%"
+            )
 
-    elif asset_type == "crypto" and identifier:
-        context_parts.append(get_crypto_data(identifier))
-        trending = get_crypto_news(identifier)
-        if trending:
-            context_parts.append(trending)
+        news = get_news_for_ticker(ticker, days=7)
+        if news:
+            context_parts.append("News: " + " | ".join(
+                a["title"] for a in news[:3]
+            ))
 
-    elif asset_type == "india_stock" and identifier:
-        context_parts.append(get_india_stock_data(identifier))
-        context_parts.append(get_earnings_data(identifier))
-
-    elif asset_type == "us_stock" and identifier:
-        context_parts.append(get_stock_data(identifier))
-        context_parts.append(get_earnings_data(identifier))
-
-    separator = "\n" + "=" * 30 + "\n"
-    return separator.join(context_parts)
+    return "\n".join(context_parts) if context_parts else "No real-time context available."
