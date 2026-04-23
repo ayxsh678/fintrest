@@ -171,14 +171,8 @@ const clearSession = async () => {
 };
 
 // ── TradingView ─────────────────────────────────────────
-// Reject obvious junk before handing it to the embed (which would show an
-// empty "Invalid symbol" box). Allow letters, digits, dot, dash, colon,
-// underscore; keep length sane.
 const CHART_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
 
-// Build a TradingView symbol-page URL so tapping/clicking a chart opens
-// the full TV experience (matches the old iframe's click-through behavior
-// without bringing back the "only available on TradingView" modal).
 const TV_CRYPTO_MAP = {
   BTC:  "BINANCE-BTCUSDT",
   ETH:  "BINANCE-ETHUSDT",
@@ -187,9 +181,6 @@ const TV_CRYPTO_MAP = {
   DOGE: "BINANCE-DOGEUSDT",
 };
 function tvSymbolUrl(ticker) {
-  // Guard with the same shape check used for /chart/ calls — any symbol
-  // the backend would reject would also yield a broken TV URL, so bail
-  // early and let the caller render without a click-through.
   if (typeof ticker !== "string" || !CHART_VALID_TICKER.test(ticker)) return null;
   const t = ticker.toUpperCase();
   if (TV_CRYPTO_MAP[t]) return `https://www.tradingview.com/symbols/${TV_CRYPTO_MAP[t]}/`;
@@ -199,9 +190,6 @@ function tvSymbolUrl(ticker) {
   return `https://www.tradingview.com/symbols/NASDAQ-${t}/`;
 }
 
-// Only attach a title= tooltip when the value is long enough to plausibly
-// truncate. Short values (e.g. "AAPL", "1.25x") don't need a tooltip and
-// the extra attribute just adds noise for screen readers.
 function maybeTitle(v, threshold = 8) {
   if (typeof v !== "string" && typeof v !== "number") return undefined;
   const s = String(v);
@@ -217,13 +205,6 @@ function ChartFallback({ ticker, height, reason }) {
   );
 }
 
-// Self-hosted replacement for the TradingView widget. Pulls OHLC from our
-// /chart/{ticker} endpoint (backed by EODHD) and renders with
-// lightweight-charts. This sidesteps TradingView's licensing modal on
-// embedded NSE/BSE charts and keeps all chart data on our own trust boundary.
-//
-// Dynamic import so the ~150KB charts library doesn't land in the initial
-// bundle for users who never open a compare view.
 function TradingViewChart({ ticker, height = 220 }) {
   const containerRef = useRef(null);
   const chartRef     = useRef(null);
@@ -273,12 +254,12 @@ function TradingViewChart({ ticker, height = 220 }) {
         chartRef.current = chart;
 
         const series = chart.addCandlestickSeries({
-          upColor:       "#3fb950",
-          downColor:     "#f85149",
-          borderUpColor: "#3fb950",
-          borderDownColor: "#f85149",
-          wickUpColor:   "#3fb950",
-          wickDownColor: "#f85149",
+          upColor:        "#3fb950",
+          downColor:      "#f85149",
+          borderUpColor:  "#3fb950",
+          borderDownColor:"#f85149",
+          wickUpColor:    "#3fb950",
+          wickDownColor:  "#f85149",
         });
         series.setData(payload.rows.map(r => ({
           time:  r.time,
@@ -298,19 +279,14 @@ function TradingViewChart({ ticker, height = 220 }) {
           resizeObserver.observe(el);
         }
       } catch (err) {
-        if (!cancelled) {
-          setState({ status: "error", reason: "Chart unavailable" });
-        }
+        if (!cancelled) setState({ status: "error", reason: "Chart unavailable" });
       }
     })();
 
     return () => {
       cancelled = true;
       if (resizeObserver) resizeObserver.disconnect();
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
+      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
     };
   }, [ticker, height, isValid]);
 
@@ -328,26 +304,12 @@ function TradingViewChart({ ticker, height = 220 }) {
   return (
     <div style={{ position: "relative", height, width: "100%", borderRadius: 12, overflow: "hidden", background: "#0d1117", border: "1px solid #21262d" }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
-      {/* Corner badge — doubles as the click-through to TradingView. Keeping
-          the hit area small (instead of a full-canvas overlay) leaves
-          crosshair, drag, zoom, and context-menu interactions on the chart
-          untouched, while still giving users an obvious "open on TV"
-          affordance that matches the old widget's behavior. */}
       {tvHref ? (
-        <a
-          href={tvHref}
-          target="_blank"
-          rel="noopener noreferrer"
+        <a href={tvHref} target="_blank" rel="noopener noreferrer"
           title={`Open ${ticker} on TradingView`}
           aria-label={`Open ${ticker} on TradingView`}
           className="chart-tv-badge"
-          style={{
-            position: "absolute", top: 6, left: 8, zIndex: 2,
-            fontSize: 11, color: "#8b949e", textDecoration: "none",
-            padding: "2px 6px", borderRadius: 6,
-            background: "rgba(13,17,23,0.6)", border: "1px solid transparent",
-          }}
-        >
+          style={{ position: "absolute", top: 6, left: 8, zIndex: 2, fontSize: 11, color: "#8b949e", textDecoration: "none", padding: "2px 6px", borderRadius: 6, background: "rgba(13,17,23,0.6)", border: "1px solid transparent" }}>
           {tickerLabel}
         </a>
       ) : (
@@ -367,16 +329,16 @@ function TradingViewChart({ ticker, height = 220 }) {
 // ── News Feed with impact scoring ────────────────────────
 function NewsFeed({ ticker, news, loading }) {
   const [openIdx, setOpenIdx] = useState(null);
-  const items = news?.news ?? [];
+  const items   = news?.news ?? [];
   const summary = news?.sentiment_summary;
   const overall = news?.overall_sentiment;
 
   const dirColor = (d) => d === "may increase" ? "#3fb950" : d === "may decrease" ? "#f85149" : "#e3b341";
   const dirArrow = (d) => d === "may increase" ? "▲" : d === "may decrease" ? "▼" : "▬";
-  const timeAgo = (iso) => {
+  const timeAgo  = (iso) => {
     if (!iso) return "";
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-    if (diff < 3600) return `${Math.max(1, Math.floor(diff / 60))}m ago`;
+    if (diff < 3600)  return `${Math.max(1, Math.floor(diff / 60))}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     return `${Math.floor(diff / 86400)}d ago`;
   };
@@ -389,7 +351,9 @@ function NewsFeed({ ticker, news, loading }) {
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 13, color: "#f7c843", fontWeight: 700 }}>{ticker}</div>
         </div>
         {overall && (
-          <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>Overall: <span style={{ color: overall === "positive" ? "#3fb950" : overall === "negative" ? "#f85149" : "#e3b341", fontWeight: 700 }}>{overall}</span></div>
+          <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            Overall: <span style={{ color: overall === "positive" ? "#3fb950" : overall === "negative" ? "#f85149" : "#e3b341", fontWeight: 700 }}>{overall}</span>
+          </div>
         )}
       </div>
       {loading ? (
@@ -402,7 +366,7 @@ function NewsFeed({ ticker, news, loading }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {items.map((n, i) => {
               const isOpen = openIdx === i;
-              const color = dirColor(n.price_direction);
+              const color  = dirColor(n.price_direction);
               return (
                 <div key={i} style={{ background: "#161b22", borderRadius: 10, borderLeft: `3px solid ${color}`, padding: "10px 12px", cursor: "pointer" }} onClick={() => setOpenIdx(isOpen ? null : i)}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
@@ -433,7 +397,7 @@ function NewsFeed({ ticker, news, loading }) {
   );
 }
 
-// ── Metric explanations (tap-to-explain) ────────────────
+// ── Metric explanations ──────────────────────────────────
 const METRIC_EXPLANATIONS = {
   "Price":     { short: "What one share costs right now.", detail: "The last traded price. Goes up when more people want to buy; goes down when more people want to sell. By itself, price tells you nothing about whether a stock is cheap or expensive — compare with P/E and Market Cap." },
   "5D Change": { short: "How much the price moved over the last 5 trading days.", detail: "Short-term momentum. Green = rising, red = falling. Useful to catch trends, but 5 days is noise for long-term investors. Don't buy or sell just because of a 5-day move." },
@@ -448,19 +412,38 @@ const METRIC_EXPLANATIONS = {
 // ── Compare Table ───────────────────────────────────────
 function CompareTable({ data, ticker_a, ticker_b }) {
   const [expanded, setExpanded] = useState(null);
-  const parse = (s, f) => { const m = s?.match(new RegExp(`${f}: ([^\n]+)`)); return m ? m[1].trim() : "—"; };
-  const sA = typeof data?.data_a?.stock === "string" ? data.data_a.stock : ""; const sB = typeof data?.data_b?.stock === "string" ? data.data_b.stock : "";
+
+  // API returns data_a.stock as a JSON object — read fields directly
+  const stockA = data?.data_a?.stock || {};
+  const stockB = data?.data_b?.stock || {};
+  const earnA  = data?.data_a?.earnings || {};
+  const earnB  = data?.data_b?.earnings || {};
+
+  const fmt = (v) => {
+    if (v === null || v === undefined || v === "") return "—";
+    if (typeof v === "number") {
+      if (v > 1_000_000_000) return (v / 1_000_000_000).toFixed(2) + "B";
+      if (v > 1_000_000)     return (v / 1_000_000).toFixed(2) + "M";
+      return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+    return String(v);
+  };
+
+  const fmtPct = (v) => (v != null && v !== "") ? fmt(v) + "%" : "—";
+
   const rows = [
-    { label: "Price",     a: parse(sA, "Current Price"),   b: parse(sB, "Current Price")   },
-    { label: "5D Change", a: parse(sA, "5-Day Change"),    b: parse(sB, "5-Day Change")    },
-    { label: "Mkt Cap",   a: parse(sA, "Market Cap"),      b: parse(sB, "Market Cap")      },
-    { label: "P/E",       a: parse(sA, "P/E Ratio"),       b: parse(sB, "P/E Ratio")       },
-    { label: "EPS",       a: parse(sA, "EPS"),             b: parse(sB, "EPS")             },
-    { label: "52W High",  a: parse(sA, "52W High"),        b: parse(sB, "52W High")        },
-    { label: "52W Low",   a: parse(sA, "52W Low"),         b: parse(sB, "52W Low")         },
-    { label: "Rel Vol",   a: parse(sA, "Relative Volume"), b: parse(sB, "Relative Volume") },
+    { label: "Price",     a: fmt(stockA.price),                   b: fmt(stockB.price)                   },
+    { label: "5D Change", a: fmtPct(stockA.five_day_change),      b: fmtPct(stockB.five_day_change)      },
+    { label: "Mkt Cap",   a: fmt(stockA.market_cap),              b: fmt(stockB.market_cap)              },
+    { label: "P/E",       a: fmt(stockA.pe_ratio),                b: fmt(stockB.pe_ratio)                },
+    { label: "EPS",       a: fmt(earnA.eps_actual),               b: fmt(earnB.eps_actual)               },
+    { label: "52W High",  a: fmt(stockA.week52_high),             b: fmt(stockB.week52_high)             },
+    { label: "52W Low",   a: fmt(stockA.week52_low),              b: fmt(stockB.week52_low)              },
+    { label: "Rel Vol",   a: fmt(stockA.rel_volume),              b: fmt(stockB.rel_volume)              },
   ];
-  const isDown = (v) => v?.includes("-");
+
+  const isDown = (v) => typeof v === "string" && v.startsWith("-");
+
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 14, overflow: "hidden" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: "#161b22", borderBottom: "1px solid #21262d" }}>
@@ -471,7 +454,7 @@ function CompareTable({ data, ticker_a, ticker_b }) {
       </div>
       {rows.map((row, i) => {
         const isOpen = expanded === row.label;
-        const exp = METRIC_EXPLANATIONS[row.label];
+        const exp    = METRIC_EXPLANATIONS[row.label];
         return (
           <div key={i} style={{ borderBottom: i < rows.length - 1 ? "1px solid #21262d" : "none" }}>
             <div
@@ -484,7 +467,7 @@ function CompareTable({ data, ticker_a, ticker_b }) {
                 {exp && <span style={{ fontSize: 9, opacity: 0.6 }}>{isOpen ? "▾" : "ⓘ"}</span>}
               </div>
               {[row.a, row.b].map((val, j) => (
-                <div key={j} title={maybeTitle(val)} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : "#3fb950") : "#e6edf3", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
+                <div key={j} title={maybeTitle(val)} style={{ padding: "7px 8px", textAlign: "center", fontFamily: "'DM Mono', monospace", fontSize: 11, color: row.label === "5D Change" ? (isDown(val) ? "#f85149" : val === "—" ? "#8b949e" : "#3fb950") : "#e6edf3", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</div>
               ))}
             </div>
             {isOpen && exp && (
@@ -508,8 +491,6 @@ const CustomTooltip = ({ active, payload, symbol = "$" }) => active && payload?.
 
 // ── Stock Card ──────────────────────────────────────────
 function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) {
-  // Prefer real close-price sparkline from the enrich endpoint; fall back
-  // to the seeded random-walk only when no upstream data is available yet.
   const data = Array.isArray(stock.sparkline) && stock.sparkline.length > 1
     ? stock.sparkline.map((p, i) => ({ day: `D${i + 1}`, price: p }))
     : generateChartData(stock.base);
@@ -527,7 +508,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 15, color: "#e6edf3", fontWeight: 600 }}>
-            {stock.price == null ? "—" : stock.type === "India" ? `₹${stock.price.toLocaleString()}` : stock.type === "Crypto" ? `$${stock.price.toLocaleString()}` : `$${stock.price.toLocaleString()}`}
+            {stock.price == null ? "—" : stock.type === "India" ? `₹${stock.price.toLocaleString()}` : `$${stock.price.toLocaleString()}`}
           </div>
           <div style={{ fontSize: 11, color: isUp ? "#3fb950" : "#f85149", marginTop: 2 }}>
             {isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}%
@@ -555,10 +536,8 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
 
 // ── Main Chart ──────────────────────────────────────────
 function MainChart({ stock, isMobile = false }) {
-  const isUp = (stock.change ?? 0) >= 0;
-  const ts   = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
-  // Match the old 160px mobile / 200px desktop split so the surrounding
-  // card doesn't reflow on small screens.
+  const isUp        = (stock.change ?? 0) >= 0;
+  const ts          = TYPE_STYLES[stock.type] || TYPE_STYLES.US;
   const chartHeight = isMobile ? 160 : 200;
   return (
     <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 16, padding: "20px" }}>
@@ -575,9 +554,6 @@ function MainChart({ stock, isMobile = false }) {
           <div style={{ fontSize: 12, color: isUp ? "#3fb950" : "#f85149" }}>{isUp ? "▲" : "▼"} {Math.abs(stock.change ?? 0)}% today</div>
         </div>
       </div>
-      {/* Real OHLC via self-hosted lightweight-charts (same component used
-          in Compare). Replaces the old fake random-walk recharts chart that
-          appeared as a flat line because its Y-axis started at $0. */}
       <TradingViewChart ticker={stock.ticker} height={chartHeight} />
     </div>
   );
@@ -607,11 +583,11 @@ function ChatBubble({ msg }) {
 
 // ── Auth Modal ──────────────────────────────────────────
 function AuthModal({ onSuccess }) {
-  const [mode, setMode]       = useState("login");
-  const [email, setEmail]     = useState("");
+  const [mode, setMode]         = useState("login");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError]     = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
 
   const submit = async () => {
     if (!email || !password) return;
@@ -698,7 +674,7 @@ export default function App() {
   const [alertThreshold, setAlertThreshold]     = useState("");
   const [alertDirection, setAlertDirection]     = useState("above");
   const [alertCreating, setAlertCreating]       = useState(false);
-  const [alertError, setAlertError]              = useState("");
+  const [alertError, setAlertError]             = useState("");
   const [triggeredNotifs, setTriggeredNotifs]   = useState([]);
 
   const [sentiments, setSentiments]             = useState({});
@@ -718,9 +694,7 @@ export default function App() {
         const res  = await fetch(`${API_URL}/session/${sid}/history`);
         if (!res.ok) return;
         const data = await res.json();
-        const hist = (data.messages || []).map(m => ({
-          role: m.role, content: m.content, sources: []
-        }));
+        const hist = (data.messages || []).map(m => ({ role: m.role, content: m.content, sources: [] }));
         if (hist.length) setMessages([{ role: "assistant", content: "Welcome back. Resuming your previous conversation.", sources: [] }, ...hist]);
       } catch {}
     })();
@@ -739,27 +713,15 @@ export default function App() {
         const byTicker = Object.fromEntries(items.map(i => [i.ticker, i]));
         const updated = WATCHLIST_DEFAULT.map(stock => {
           const live = byTicker[stock.ticker];
-          // Skip rows the backend flagged as errored/timed out, or where
-          // price fetch failed. Falling back to the placeholder stock
-          // keeps the UI showing "-" instead of a stale/zero value.
           if (!live || live.error || live.price == null) return stock;
-          return {
-            ...stock,
-            price: live.price,
-            change: live.change_5d_pct ?? null,
-            base: live.price,
-            sparkline: live.sparkline ?? null,
-          };
+          return { ...stock, price: live.price, change: live.change_5d_pct ?? null, base: live.price, sparkline: live.sparkline ?? null };
         });
         setWatchlist(updated);
         setSelectedStock(prev => updated.find(s => s.ticker === prev.ticker) ?? prev);
         items.forEach(i => {
           if (i.sentiment_score != null) {
             fetchedSentiments.current.add(i.ticker);
-            setSentiments(prev => ({
-              ...prev,
-              [i.ticker]: { ticker: i.ticker, score: i.sentiment_score, label: i.sentiment_label, headline_count: 0, headlines: [] },
-            }));
+            setSentiments(prev => ({ ...prev, [i.ticker]: { ticker: i.ticker, score: i.sentiment_score, label: i.sentiment_label, headline_count: 0, headlines: [] } }));
           }
         });
       } catch {}
@@ -778,14 +740,14 @@ export default function App() {
       const data = await res.json();
       setSentiments(prev => ({ ...prev, [ticker]: data }));
     } catch {
-      fetchedSentiments.current.delete(ticker); // allow retry on error
+      fetchedSentiments.current.delete(ticker);
       setSentiments(prev => ({ ...prev, [ticker]: null }));
     }
     setSentimentLoading(prev => ({ ...prev, [ticker]: false }));
   }, []);
 
-  const [newsData, setNewsData]           = useState({});
-  const [newsLoading, setNewsLoading]     = useState({});
+  const [newsData, setNewsData]       = useState({});
+  const [newsLoading, setNewsLoading] = useState({});
   const fetchedNews = useRef(new Set());
   const fetchNews = useCallback(async (ticker, name = "") => {
     if (fetchedNews.current.has(ticker)) return;
@@ -812,10 +774,10 @@ export default function App() {
       if (!sid) return;
       try {
         const res  = await fetch(`${API_URL}/check_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
-        if (!res.ok) throw new Error(`check_alerts failed: ${res.status}`);
+        if (!res.ok) return;
         const data = await res.json();
         if (data.triggered?.length) { setTriggeredNotifs(prev => [...prev, ...data.triggered]); fetchAlerts(); }
-      } catch (e) { console.error("Alert polling error:", e); }
+      } catch {}
     };
     poll();
     const t = setInterval(poll, 300_000);
@@ -829,27 +791,20 @@ export default function App() {
       const res  = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
       const data = await res.json();
       setAlerts(Array.isArray(data) ? data : []);
-    } catch (e) { console.error("Failed to fetch alerts:", e); }
+    } catch {}
   };
 
   const createAlert = async () => {
-    const ticker = alertTicker.toUpperCase().trim();
+    const ticker    = alertTicker.toUpperCase().trim();
     const threshold = parseFloat(alertThreshold);
-    if (!ticker || !Number.isFinite(threshold) || threshold <= 0) {
-      setAlertError("Enter a valid ticker and positive threshold.");
-      return;
-    }
-    setAlertError("");
-    setAlertCreating(true);
+    if (!ticker || !Number.isFinite(threshold) || threshold <= 0) { setAlertError("Enter a valid ticker and positive threshold."); return; }
+    setAlertError(""); setAlertCreating(true);
     try {
       const sid = getSessionId() || await startSession();
       const res = await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, ticker, threshold, direction: alertDirection }) });
-      if (!res.ok) throw new Error(`create_alert failed: ${res.status}`);
+      if (!res.ok) throw new Error();
       setAlertTicker(""); setAlertThreshold(""); await fetchAlerts();
-    } catch (e) {
-      console.error("Failed to create alert:", e);
-      setAlertError("Failed to create alert. Please try again.");
-    }
+    } catch { setAlertError("Failed to create alert. Please try again."); }
     setAlertCreating(false);
   };
 
@@ -857,14 +812,13 @@ export default function App() {
     const sid = getSessionId();
     if (!sid) return;
     try {
-      const res = await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) });
-      if (!res.ok) throw new Error(`delete_alert failed: ${res.status}`);
+      await fetch(`${API_URL}/delete_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, alert_id: id }) });
       await fetchAlerts();
-    } catch (e) { console.error("Failed to delete alert:", e); }
+    } catch {}
   };
 
-  const dismissNotif       = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
-  const addToPortfolio     = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
+  const dismissNotif        = (i) => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i));
+  const addToPortfolio      = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
   const removeFromPortfolio = (t) => setPortfolio(prev => prev.filter(x => x !== t));
 
   const runPortfolioAnalysis = async (over = null) => {
@@ -908,24 +862,18 @@ export default function App() {
     setInput("");
     if (isMobile) setMobileTab("chat");
 
-    const sid      = getSessionId() || await startSession();
-    let endpoint   = "/ask";
-    if (isCompare)   endpoint = "/compare/from-chat";
+    const sid    = getSessionId() || await startSession();
+    let endpoint = "/ask";
+    if (isCompare)        endpoint = "/compare/from-chat";
     else if (isPortfolio) endpoint = "/portfolio/from-chat";
 
     try {
-      const res  = await fetch(`${API_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, query: question, session_id: sid, time_range: timeRange }),
-      });
+      const res  = await fetch(`${API_URL}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, query: question, session_id: sid, time_range: timeRange }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data?.detail || data?.error || `Request failed (${res.status}).`;
-        setMessages(prev => [...prev, { role: "assistant", content: msg, sources: [] }]);
+        setMessages(prev => [...prev, { role: "assistant", content: data?.detail || data?.error || `Request failed (${res.status}).`, sources: [] }]);
       } else {
         if (data.session_id) setSessionId(data.session_id);
-
         if (isCompare && data.ticker_a) {
           setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data);
           setMessages(prev => [...prev, { role: "assistant", content: data.verdict, sources: ["Yahoo Finance"] }]);
@@ -933,12 +881,10 @@ export default function App() {
           setPortfolio(data.tickers); setPortfolioData(data);
           setMessages(prev => [...prev, { role: "assistant", content: data.summary, sources: ["Yahoo Finance"] }]);
         } else {
-          const content = data.answer || data.detail || "No response received.";
-          setMessages(prev => [...prev, { role: "assistant", content, sources: data.sources || [], responseTime: data.response_time }]);
+          setMessages(prev => [...prev, { role: "assistant", content: data.answer || data.detail || "No response received.", sources: data.sources || [], responseTime: data.response_time }]);
         }
       }
-    } catch (e) {
-      console.error("sendMessage error:", e);
+    } catch {
       setMessages(prev => [...prev, { role: "assistant", content: "Connection error.", sources: [] }]);
     }
     setLoading(false);
@@ -963,21 +909,17 @@ export default function App() {
 
   const renderLeftPanelContent = () => (
     <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-      {/* On mobile "more" tab: show sub-tabs so compare/portfolio/alerts are reachable */}
       {isMobile && mobileTab === "more" && (
         <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
           {MORE_SUB_TABS.map(({ id, label }) => (
             <button key={id} onClick={() => setActiveTab(id)}
-              style={{ flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 700, border: "1px solid", borderRadius: 8, cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
-                background: activeTab === id ? "#f7c843" : "#161b22",
-                color: activeTab === id ? "#0d1117" : "#8b949e",
-                borderColor: activeTab === id ? "#f7c843" : "#21262d" }}>
+              style={{ flex: 1, padding: "9px 0", fontSize: 12, fontWeight: 700, border: "1px solid", borderRadius: 8, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", background: activeTab === id ? "#f7c843" : "#161b22", color: activeTab === id ? "#0d1117" : "#8b949e", borderColor: activeTab === id ? "#f7c843" : "#21262d" }}>
               {label}
             </button>
           ))}
         </div>
       )}
-      {/* On mobile "watchlist" tab always shows watchlist; on desktop follows activeTab */}
+
       {(isMobile ? mobileTab === "watchlist" : activeTab === "watchlist") && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {watchlist.map(stock => (
@@ -1004,12 +946,12 @@ export default function App() {
           <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 }}>Quick picks</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {[
-              { label: "Reliance vs TCS",     a: "RELIANCE.NS",  b: "TCS.NS" },
-              { label: "HDFC vs ICICI",       a: "HDFCBANK.NS",  b: "ICICIBANK.NS" },
-              { label: "Infosys vs Wipro",    a: "INFY.NS",      b: "WIPRO.NS" },
-              { label: "AAPL vs MSFT",        a: "AAPL",         b: "MSFT" },
-              { label: "NVDA vs AMD",         a: "NVDA",         b: "AMD" },
-              { label: "BTC vs ETH",          a: "BTC",          b: "ETH" },
+              { label: "Reliance vs TCS",  a: "RELIANCE.NS",  b: "TCS.NS"        },
+              { label: "HDFC vs ICICI",    a: "HDFCBANK.NS",  b: "ICICIBANK.NS"  },
+              { label: "Infosys vs Wipro", a: "INFY.NS",      b: "WIPRO.NS"      },
+              { label: "AAPL vs MSFT",     a: "AAPL",         b: "MSFT"          },
+              { label: "NVDA vs AMD",      a: "NVDA",         b: "AMD"           },
+              { label: "BTC vs ETH",       a: "BTC",          b: "ETH"           },
             ].map(pick => (
               <button key={pick.label} disabled={compareLoading}
                 onClick={() => { setCompareA(pick.a); setCompareB(pick.b); runComparison(pick.a, pick.b); }}
@@ -1047,27 +989,11 @@ export default function App() {
               {portfolioLoading ? "Analyzing..." : "Analyze Portfolio"}
             </button>
           )}
-          {portfolioData?.error && (
-            <div style={{ fontSize: 12, color: "#f85149" }}>{portfolioData.error}</div>
-          )}
+          {portfolioData?.error && <div style={{ fontSize: 12, color: "#f85149" }}>{portfolioData.error}</div>}
           {portfolioData && !portfolioData.error && (
             <div style={{ background: "#161b22", border: "1px solid #21262d", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>Analysis</div>
               <div style={{ fontSize: 13, color: "#e6edf3", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{portfolioData.summary}</div>
-              {portfolioData.breakdown && Object.keys(portfolioData.breakdown).length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ fontSize: 10, color: "#8b949e", textTransform: "uppercase", letterSpacing: 0.5 }}>Holdings</div>
-                  {Object.entries(portfolioData.breakdown).map(([ticker, info]) => {
-                    const firstLine = typeof info === "string" ? info.split("\n").find(l => l.includes("Current Price")) || info.split("\n")[0] : "";
-                    return (
-                      <div key={ticker} style={{ background: "#0d1117", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#f7c843" }}>{ticker}</span>
-                        <span style={{ fontSize: 11, color: "#8b949e" }}>{firstLine.replace(/^.*?:\s*/, "")}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1119,16 +1045,8 @@ export default function App() {
       ) : (
         <>
           <MainChart stock={selectedStock} isMobile={isMobile} />
-          <SentimentGauge
-            ticker={selectedStock.ticker}
-            sentiment={sentiments[selectedStock.ticker] ?? null}
-            loading={sentimentLoading[selectedStock.ticker] ?? false}
-          />
-          <NewsFeed
-            ticker={selectedStock.ticker}
-            news={newsData[selectedStock.ticker] ?? null}
-            loading={newsLoading[selectedStock.ticker] ?? false}
-          />
+          <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
+          <NewsFeed ticker={selectedStock.ticker} news={newsData[selectedStock.ticker] ?? null} loading={newsLoading[selectedStock.ticker] ?? false} />
         </>
       )}
       {!isMobile && (
@@ -1185,8 +1103,8 @@ export default function App() {
             <span style={{ fontWeight: 700, fontSize: 18 }}>Fintrest</span>
           </div>
           <div style={{ display: "flex", gap: isMobile ? 6 : 10, flexShrink: 0 }}>
-            <button onClick={handleNewChat} aria-label="New chat" title="New chat" style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: isMobile ? "6px 10px" : "6px 15px", borderRadius: 20, whiteSpace: "nowrap" }}>{isMobile ? "+" : "+ New"}</button>
-            {userState && <button onClick={handleLogout} aria-label="Sign out" title="Sign out" style={{ color: "#f85149", background: "none", border: "none", padding: isMobile ? "6px 6px" : "6px 10px", whiteSpace: "nowrap" }}>{isMobile ? "Exit" : "Sign Out"}</button>}
+            <button onClick={handleNewChat} style={{ background: "#161b22", color: "#8b949e", border: "1px solid #21262d", padding: isMobile ? "6px 10px" : "6px 15px", borderRadius: 20, whiteSpace: "nowrap" }}>{isMobile ? "+" : "+ New"}</button>
+            {userState && <button onClick={handleLogout} style={{ color: "#f85149", background: "none", border: "none", padding: isMobile ? "6px 6px" : "6px 10px", whiteSpace: "nowrap" }}>{isMobile ? "Exit" : "Sign Out"}</button>}
           </div>
         </header>
 
@@ -1207,22 +1125,19 @@ export default function App() {
         ) : (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ flex: 1, overflowY: "auto" }}>
-              {mobileTab === "market"    ? renderCenterContent()  :
-               mobileTab === "chat"     ? renderChatContent()    :
-               renderLeftPanelContent()}
+              {mobileTab === "market" ? renderCenterContent() :
+                mobileTab === "chat"   ? renderChatContent()   :
+                renderLeftPanelContent()}
             </div>
             <div style={{ display: "flex", borderTop: "1px solid #21262d", background: "#0d1117", padding: "10px 4px" }}>
               {MOBILE_TABS.map(({ id, label, icon }) => (
                 <button key={id}
                   onClick={() => {
                     setMobileTab(id);
-                    // Default "more" to compare sub-tab when first opened
                     if (id === "more" && activeTab === "watchlist") setActiveTab("compare");
-                    // Only fetch alerts when actually transitioning into "more"
                     if (id === "more" && mobileTab !== "more") fetchAlerts();
                   }}
-                  style={{ flex: 1, background: "none", border: "none", color: mobileTab === id ? "#f7c843" : "#8b949e",
-                    fontSize: 10, textTransform: "capitalize", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                  style={{ flex: 1, background: "none", border: "none", color: mobileTab === id ? "#f7c843" : "#8b949e", fontSize: 10, textTransform: "capitalize", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                   <span style={{ fontSize: 16 }}>{icon}</span>
                   <span>{label}</span>
                 </button>
