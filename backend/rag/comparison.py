@@ -15,18 +15,22 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 def get_comparison_data(ticker_a: str, ticker_b: str) -> dict:
     def fetch_one(ticker):
         try:
             is_india = ticker.upper().endswith(".NS") or ticker.upper().endswith(".BO")
-            stock_data = get_india_stock_data(ticker) if is_india else get_stock_data(ticker)
+            # as_dict=True returns a JSON object with price/PE/52W fields
+            # that the frontend CompareTable reads directly
+            stock_data = get_india_stock_data(ticker, as_dict=True) if is_india \
+                         else get_stock_data(ticker)
             return ticker, {
-                "stock": stock_data,
+                "stock":    stock_data,
                 "earnings": get_earnings_data(ticker),
             }
         except Exception as e:
             logger.error(f"Error fetching {ticker}: {e}")
-            return ticker, {"stock": "Unavailable", "earnings": "Unavailable"}
+            return ticker, {"stock": {}, "earnings": {}}
 
     results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
@@ -36,38 +40,36 @@ def get_comparison_data(ticker_a: str, ticker_b: str) -> dict:
             results[ticker] = data
     return results
 
+
 def build_comparison_context(ticker_a: str, ticker_b: str) -> str:
-    data = get_comparison_data(ticker_a, ticker_b)
+    data  = get_comparison_data(ticker_a, ticker_b)
     parts = []
     for ticker in [ticker_a, ticker_b]:
         t_data = data.get(ticker, {})
         parts.append(f"── {ticker} ──\n{t_data.get('stock')}\n{t_data.get('earnings')}")
-    return "\n" + "="*30 + "\n" + "\n".join(parts)
+    return "\n" + "=" * 30 + "\n" + "\n".join(parts)
+
 
 def extract_comparison_tickers(query: str) -> tuple[str, str] | None:
     query_lower = query.lower()
     found = []
 
-    # 1. Match company names.
-    # India entries take precedence over US entries on name collisions
-    # (checked first; US loop skips any name already in INDIA_COMPANY_MAP).
+    # India entries take precedence over US on name collisions
     for name, ticker in INDIA_COMPANY_MAP.items():
         if name in query_lower and ticker not in found:
             found.append(ticker)
     for name, ticker in COMPANY_MAP.items():
         if name in INDIA_COMPANY_MAP:
-            continue  # INDIA_COMPANY_MAP has precedence
+            continue
         if name in query_lower and ticker not in found:
             found.append(ticker)
 
-    # 2. Match raw words — preserve .NS / .BO suffixes for Indian tickers
+    # Match raw ticker words — preserve .NS / .BO suffixes
     if len(found) < 2:
         for word in query.upper().split():
-            # Allow letters, digits, dots (for .NS/.BO)
             clean = re.sub(r"[^A-Z0-9.]", "", word).strip(".")
             if not clean:
                 continue
-            # Accept known plain tickers OR anything ending in .NS / .BO
             if (clean in KNOWN_TICKERS or clean.endswith(".NS") or clean.endswith(".BO")) \
                     and clean not in found:
                 found.append(clean)

@@ -13,9 +13,7 @@ india_cache = TTLCache(maxsize=100, ttl=300)
 india_lock  = Lock()
 
 # ── NSE/BSE ticker map ─────────────────────────────────
-# yfinance uses .NS suffix for NSE and .BO for BSE
 INDIA_COMPANY_MAP = {
-    # Nifty 50 core
     "reliance": "RELIANCE.NS",
     "tcs": "TCS.NS",           "tata consultancy": "TCS.NS",
     "infosys": "INFY.NS",      "infy": "INFY.NS",
@@ -75,85 +73,106 @@ def extract_india_ticker(query: str) -> str | None:
     for name in sorted(INDIA_COMPANY_MAP, key=len, reverse=True):
         if name in query_lower:
             return INDIA_COMPANY_MAP[name]
-
-    # Direct ticker match — user typed RELIANCE.NS or INFY etc.
     for word in query.upper().split():
         clean = re.sub(r"[^A-Z0-9.&-]", "", word)
         if clean in KNOWN_INDIA_TICKERS:
             return clean
-        # Auto-append .NS if bare Indian ticker
         if clean + ".NS" in KNOWN_INDIA_TICKERS:
             return clean + ".NS"
-
     return None
 
 
-def get_india_stock_data(ticker: str) -> str:
-    """Fetch NSE/BSE stock data via yfinance."""
+def get_india_stock_data(ticker: str, as_dict: bool = False):
+    """
+    Fetch NSE/BSE stock data via yfinance.
+    as_dict=True  → returns a JSON-serialisable dict (used by compare table).
+    as_dict=False → returns the legacy formatted string (used by /ask context).
+    """
+    cache_key = f"{ticker}:{'dict' if as_dict else 'str'}"
     with india_lock:
-        if ticker in india_cache:
-            return india_cache[ticker]
+        if cache_key in india_cache:
+            return india_cache[cache_key]
 
     try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="5d")
+        stock    = yf.Ticker(ticker)
+        info     = stock.info
+        hist     = stock.history(period="5d")
         hist_30d = stock.history(period="30d")
 
         if hist.empty:
-            return f"No price history found for {ticker}."
+            result = {"ticker": ticker, "error": "No price history found"} if as_dict \
+                     else f"No price history found for {ticker}."
+            with india_lock:
+                india_cache[cache_key] = result
+            return result
 
-        change_pct = (
-            (hist["Close"].iloc[-1] - hist["Close"].iloc[0])
-            / hist["Close"].iloc[0] * 100
-        )
-
+        change_pct     = ((hist["Close"].iloc[-1] - hist["Close"].iloc[0]) / hist["Close"].iloc[0] * 100)
         avg_volume_30d = hist_30d["Volume"].mean() if not hist_30d.empty else 0
         latest_volume  = hist["Volume"].iloc[-1]
-        # yfinance's 30d history is often empty / zero-volume for NSE tickers on
-        # Render (Yahoo returns prices but no volume for Indian equities from
-        # cloud IPs). Fall back to EODHD so Rel Vol stays populated.
+
+        # yfinance volume often empty for NSE on cloud IPs — fall back to EODHD
         if not avg_volume_30d or avg_volume_30d <= 0:
             try:
                 fallback_avg = eodhd_get_avg_volume(ticker)
                 if fallback_avg and fallback_avg > 0:
                     avg_volume_30d = fallback_avg
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
-        rel_volume = (
-            f"{latest_volume / avg_volume_30d:.2f}x"
-            if avg_volume_30d and avg_volume_30d > 0 and latest_volume else "N/A"
+
+        rel_volume_ratio = (
+            round(latest_volume / avg_volume_30d, 2)
+            if avg_volume_30d and avg_volume_30d > 0 and latest_volume else None
         )
+        rel_volume_str = f"{rel_volume_ratio}x" if rel_volume_ratio else "N/A"
 
         currency = info.get("currency", "INR")
         symbol   = "₹" if currency == "INR" else "$"
 
-        result = (
-            f"Stock: {info.get('longName', ticker)} ({ticker}) — NSE/BSE\n"
-            f"Current Price: {symbol}{info.get('currentPrice', 'N/A')}\n"
-            f"Previous Close: {symbol}{info.get('previousClose', 'N/A')}\n"
-            f"52W High: {symbol}{info.get('fiftyTwoWeekHigh', 'N/A')}\n"
-            f"52W Low: {symbol}{info.get('fiftyTwoWeekLow', 'N/A')}\n"
-            f"P/E Ratio: {info.get('trailingPE', 'N/A')}\n"
-            f"Market Cap: {symbol}{int(info.get('marketCap') or 0):,}\n"
-            f"EPS: {info.get('trailingEps', 'N/A')}\n"
-            f"5-Day Change: {change_pct:.2f}%\n"
-            f"Latest Volume: {int(latest_volume):,}\n"
-            f"30D Avg Volume: {int(avg_volume_30d):,}\n"
-            f"Relative Volume: {rel_volume}"
-        )
+        if as_dict:
+            result = {
+                "ticker":          ticker,
+                "name":            info.get("longName", ticker),
+                "price":           info.get("currentPrice") or info.get("regularMarketPrice"),
+                "change":          info.get("regularMarketChangePercent"),
+                "five_day_change": round(change_pct, 2),
+                "market":          "NSE/BSE",
+                "currency":        currency,
+                "market_cap":      info.get("marketCap"),
+                "pe_ratio":        info.get("trailingPE"),
+                "week52_high":     info.get("fiftyTwoWeekHigh"),
+                "week52_low":      info.get("fiftyTwoWeekLow"),
+                "rel_volume":      rel_volume_ratio,
+                "eps_actual":      info.get("trailingEps"),
+            }
+        else:
+            result = (
+                f"Stock: {info.get('longName', ticker)} ({ticker}) — NSE/BSE\n"
+                f"Current Price: {symbol}{info.get('currentPrice', 'N/A')}\n"
+                f"Previous Close: {symbol}{info.get('previousClose', 'N/A')}\n"
+                f"52W High: {symbol}{info.get('fiftyTwoWeekHigh', 'N/A')}\n"
+                f"52W Low: {symbol}{info.get('fiftyTwoWeekLow', 'N/A')}\n"
+                f"P/E Ratio: {info.get('trailingPE', 'N/A')}\n"
+                f"Market Cap: {symbol}{int(info.get('marketCap') or 0):,}\n"
+                f"EPS: {info.get('trailingEps', 'N/A')}\n"
+                f"5-Day Change: {change_pct:.2f}%\n"
+                f"Latest Volume: {int(latest_volume):,}\n"
+                f"30D Avg Volume: {int(avg_volume_30d):,}\n"
+                f"Relative Volume: {rel_volume_str}"
+            )
 
     except Exception as e:
         nse = get_nse_quote(ticker)
         if nse:
-            result = nse_format(ticker, nse)
+            result = {"ticker": ticker, "error": "NSE fallback"} if as_dict else nse_format(ticker, nse)
         else:
             av_quote = av_get_quote(ticker)
             if av_quote:
-                result = av_format(ticker, av_quote, symbol="₹", label="NSE/BSE")
+                result = {"ticker": ticker, "error": "AV fallback"} if as_dict \
+                            else av_format(ticker, av_quote, symbol="₹", label="NSE/BSE")
             else:
-                result = f"India stock data unavailable: {str(e)}"
+                result = {"ticker": ticker, "error": str(e)} if as_dict \
+                            else f"India stock data unavailable: {str(e)}"
 
     with india_lock:
-        india_cache[ticker] = result
+        india_cache[cache_key] = result
     return result
