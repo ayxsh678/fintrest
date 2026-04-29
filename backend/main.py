@@ -10,7 +10,6 @@ from rag.alerts import create_alert, get_alerts, delete_alert, check_alerts
 from rag.sentiment import get_sentiment, get_news_impact
 from rag.eodhd import get_ohlc
 from rag.india_ohlc import get_india_ohlc
-from rag.crypto import get_coin_id, get_crypto_ohlc
 from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot, CURRENCY_PAIRS
 from model.inference import (
     generate_response, generate_portfolio_summary,
@@ -274,18 +273,7 @@ def chart(ticker: str, days: int = 180):
     if not 5 <= days <= 730:
         raise HTTPException(status_code=400, detail="days must be between 5 and 730")
 
-    # 1. Crypto -> CoinGecko. Prevents "BTC" being routed to Bitcoin
-    #    Services Inc (ticker collision on equity data providers).
-    coin_id = get_coin_id(ticker_clean.lower())
-    if coin_id:
-        try:
-            rows = get_crypto_ohlc(coin_id, days=days)
-            if rows:
-                return {"ticker": ticker_clean, "ok": True, "rows": rows, "source": "coingecko"}
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("chart: coingecko failed for %s: %s", ticker_clean, exc)
-
-    # 2. EODHD (paid plans cover US & NSE/BSE - skipped silently on demo key).
+    # 1. EODHD (NSE/BSE coverage).
     try:
         rows = get_ohlc(ticker_clean, days=days)
         if rows:
@@ -293,8 +281,8 @@ def chart(ticker: str, days: int = 180):
     except Exception as exc:  # noqa: BLE001
         logger.warning("chart: eodhd failed for %s: %s", ticker_clean, exc)
 
-    # 3. Unified Yahoo v8 -> NSE direct -> Stooq cascade. Works for NSE/BSE
-    #    without a paid EODHD plan, and for US when yfinance.info is crumb-blocked.
+    # 2. Unified Yahoo v8 -> NSE direct -> Stooq cascade. Works for NSE/BSE
+    #    without a paid EODHD plan.
     try:
         rows, src = get_india_ohlc(ticker_clean, days=days)
         if rows:
@@ -302,7 +290,7 @@ def chart(ticker: str, days: int = 180):
     except Exception as exc:  # noqa: BLE001
         logger.warning("chart: india_ohlc cascade failed for %s: %s", ticker_clean, exc)
 
-    # 4. yfinance as a final safety net.
+    # 3. yfinance as a final safety net.
     try:
         rows = get_ohlc_yf(ticker_clean, days=days)
         if rows:
@@ -311,8 +299,7 @@ def chart(ticker: str, days: int = 180):
         logger.warning("chart: yfinance failed for %s: %s", ticker_clean, exc)
 
     logger.debug(
-        "chart: no rows for %s (days=%s); providers tried: "
-        "coingecko, eodhd, yahoo_v8, nse, stooq, yfinance",
+        "chart: no rows for %s (days=%s); providers tried: eodhd, yahoo_v8, nse, stooq, yfinance",
         ticker_clean, days,
     )
     return {"ticker": ticker_clean, "ok": False, "rows": [], "source": None}

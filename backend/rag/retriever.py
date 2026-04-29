@@ -147,8 +147,8 @@ def get_stock_data(ticker: str) -> dict:
             "price":           info.get("currentPrice") or info.get("regularMarketPrice"),
             "change":          info.get("regularMarketChangePercent"),
             "five_day_change": five_day_change,
-            "market":          "NSE/BSE" if "." in ticker else "US",
-            "currency":        info.get("currency", "USD"),
+            "market":          "NSE/BSE" if "." in ticker else "NSE/BSE",
+            "currency":        info.get("currency", "INR"),
             "market_cap":      info.get("marketCap"),
             "pe_ratio":        info.get("trailingPE"),
             "week52_high":     info.get("fiftyTwoWeekHigh"),
@@ -227,12 +227,15 @@ def get_ohlc_yf(ticker: str, days: int = 180) -> dict:
 
 # Constants expected by portfolio.py and comparison.py
 COMPANY_MAP: dict[str, str] = {
-    "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL",
-    "alphabet": "GOOGL", "amazon": "AMZN", "meta": "META",
-    "tesla": "TSLA", "nvidia": "NVDA", "netflix": "NFLX",
     "reliance": "RELIANCE.NS", "tcs": "TCS.NS", "infosys": "INFY.NS",
     "wipro": "WIPRO.NS", "hdfc": "HDFCBANK.NS", "icici": "ICICIBANK.NS",
     "sbi": "SBIN.NS", "bajaj": "BAJFINANCE.NS", "adani": "ADANIENT.NS",
+    "kotak": "KOTAKBANK.NS", "axis": "AXISBANK.NS", "itc": "ITC.NS",
+    "hindustan unilever": "HINDUNILVR.NS", "hul": "HINDUNILVR.NS",
+    "maruti": "MARUTI.NS", "tatamotors": "TATAMOTORS.NS", "tata motors": "TATAMOTORS.NS",
+    "tatasteel": "TATASTEEL.NS", "tata steel": "TATASTEEL.NS",
+    "sunpharma": "SUNPHARMA.NS", "sun pharma": "SUNPHARMA.NS",
+    "ongc": "ONGC.NS", "ntpc": "NTPC.NS", "powergrid": "POWERGRID.NS",
 }
 
 KNOWN_TICKERS: list[str] = list(COMPANY_MAP.values())

@@ -62,21 +62,21 @@ const generateSparkline = (base, points = 30) => {
 };
 
 const WATCHLIST_DEFAULT = [
-  { ticker: "AAPL",        name: "Apple Inc.",    price: null, change: null, base: 248,   type: "US"     },
-  { ticker: "NVDA",        name: "NVIDIA Corp.",  price: null, change: null, base: 860,   type: "US"     },
-  { ticker: "RELIANCE.NS", name: "Reliance Ind.", price: null, change: null, base: 2950,  type: "India"  },
-  { ticker: "TCS.NS",      name: "TCS",           price: null, change: null, base: 3900,  type: "India"  },
-  { ticker: "BTC",         name: "Bitcoin",       price: null, change: null, base: 81000, type: "Crypto" },
-  { ticker: "ETH",         name: "Ethereum",      price: null, change: null, base: 3900,  type: "Crypto" },
+  { ticker: "RELIANCE.NS",   name: "Reliance Ind.",  price: null, change: null, base: 2950, type: "India" },
+  { ticker: "TCS.NS",        name: "TCS",            price: null, change: null, base: 3900, type: "India" },
+  { ticker: "HDFCBANK.NS",   name: "HDFC Bank",      price: null, change: null, base: 1700, type: "India" },
+  { ticker: "INFY.NS",       name: "Infosys",        price: null, change: null, base: 1500, type: "India" },
+  { ticker: "ICICIBANK.NS",  name: "ICICI Bank",     price: null, change: null, base: 1250, type: "India" },
+  { ticker: "SBIN.NS",       name: "SBI",            price: null, change: null, base: 820,  type: "India" },
 ];
 
 const SUGGESTIONS = [
-  "Should I buy AAPL right now?",
-  "What is Bitcoin doing today?",
-  "Compare RELIANCE.NS vs TCS.NS",
-  "Analyze portfolio BTC ETH NVDA",
-  "Ethereum 7 day trend?",
-  "Compare AAPL vs MSFT",
+  "Should I buy Reliance now?",
+  "Compare HDFCBANK.NS vs ICICIBANK.NS",
+  "Analyze portfolio RELIANCE.NS TCS.NS INFY.NS",
+  "Is Nifty 50 overbought right now?",
+  "What are the best large cap stocks on NSE?",
+  "Explain P/E ratio for TCS",
 ];
 
 const METRIC_EXPLANATIONS = {
@@ -130,7 +130,7 @@ const sentimentLabel = (s) => {
   if (s <= 38)  return "Bearish";
   return "Neutral";
 };
-const currencySymbol = (type) => type === "India" ? "₹" : "$";
+const currencySymbol = (_type) => "₹";
 const maybeTitle      = (v, t = 8) => { const s = String(v ?? ""); return s.length > t ? s : undefined; };
 const fmt = (v) => {
   if (v == null || v === "") return "—";
@@ -145,18 +145,13 @@ const fmtPct = (v) => v != null && v !== "" ? fmt(v) + "%" : "—";
 
 // ── Chart helpers ─────────────────────────────────────────
 const CHART_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
-const TV_CRYPTO_MAP = {
-  BTC: "BINANCE-BTCUSDT", ETH: "BINANCE-ETHUSDT",
-  SOL: "BINANCE-SOLUSDT", BNB: "BINANCE-BNBUSDT", DOGE: "BINANCE-DOGEUSDT",
-};
 function tvSymbolUrl(ticker) {
   if (!ticker || !CHART_VALID_TICKER.test(ticker)) return null;
   const t = ticker.toUpperCase();
-  if (TV_CRYPTO_MAP[t]) return `https://www.tradingview.com/symbols/${TV_CRYPTO_MAP[t]}/`;
   if (t.endsWith(".NS")) return `https://www.tradingview.com/symbols/NSE-${t.slice(0,-3)}/`;
   if (t.endsWith(".BO")) return `https://www.tradingview.com/symbols/BSE-${t.slice(0,-3)}/`;
   if (t.includes(":"))  return `https://www.tradingview.com/symbols/${t.replace(":","-")}/`;
-  return `https://www.tradingview.com/symbols/NASDAQ-${t}/`;
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -778,7 +773,7 @@ export default function App() {
   const [chartDays, setChartDays]           = useState(180);
 
   // Chat
-  const [messages, setMessages]   = useState([{ role: "assistant", content: "Hi, I'm Fintrest. Ask me about US stocks, Indian equities (NSE/BSE), or crypto — and I'll tell you what the numbers actually say.", sources: [] }]);
+  const [messages, setMessages]   = useState([{ role: "assistant", content: "Hi, I'm Fintrest. Ask me about NSE/BSE stocks, mutual funds, SIPs, or anything else about investing in India — and I'll tell you what the numbers actually say.", sources: [] }]);
   const [input, setInput]         = useState("");
   const [loading, setLoading]     = useState(false);
   const [timeRange, setTimeRange] = useState("7d");
@@ -1235,12 +1230,12 @@ export default function App() {
         <div className="label" style={{ marginBottom: 10 }}>Quick picks</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 24 }}>
           {[
-            { label: "Reliance vs TCS",  a: "RELIANCE.NS", b: "TCS.NS"       },
-            { label: "HDFC vs ICICI",    a: "HDFCBANK.NS", b: "ICICIBANK.NS" },
-            { label: "Infosys vs Wipro", a: "INFY.NS",     b: "WIPRO.NS"     },
-            { label: "AAPL vs MSFT",     a: "AAPL",        b: "MSFT"         },
-            { label: "NVDA vs AMD",      a: "NVDA",        b: "AMD"          },
-            { label: "BTC vs ETH",       a: "BTC",         b: "ETH"          },
+            { label: "Reliance vs TCS",    a: "RELIANCE.NS",  b: "TCS.NS"        },
+            { label: "HDFC vs ICICI",      a: "HDFCBANK.NS",  b: "ICICIBANK.NS"  },
+            { label: "Infosys vs Wipro",   a: "INFY.NS",      b: "WIPRO.NS"      },
+            { label: "SBI vs Kotak",       a: "SBIN.NS",      b: "KOTAKBANK.NS"  },
+            { label: "Bajaj vs M&M",       a: "BAJFINANCE.NS",b: "M&M.NS"        },
+            { label: "Adani vs Tata",      a: "ADANIENT.NS",  b: "TATAMOTORS.NS" },
           ].map(pick => (
             <button key={pick.label} className="btn-ghost" style={{ fontSize: 12, padding: "5px 12px", borderRadius: 20 }}
               disabled={compareLoading}
@@ -1290,7 +1285,7 @@ export default function App() {
           <input className="input-box" style={{ flex: 1 }} value={portfolioInput}
             onChange={e => setPortfolioInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") { addToPortfolio(portfolioInput); setPortfolioInput(""); } }}
-            placeholder="Add ticker — e.g. AAPL, BTC, INFY.NS" />
+            placeholder="Add ticker — e.g. RELIANCE.NS, INFY.NS, HDFCBANK.NS" />
           <button className="btn-gold" style={{ padding: "0 18px" }} onClick={() => { addToPortfolio(portfolioInput); setPortfolioInput(""); }}>
             <Plus size={18} />
           </button>
