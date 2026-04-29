@@ -62,12 +62,12 @@ const generateSparkline = (base, points = 30) => {
 };
 
 const WATCHLIST_DEFAULT = [
-  { ticker: "RELIANCE.NS",   name: "Reliance Ind.",  price: null, change: null, base: 2950, type: "India" },
-  { ticker: "TCS.NS",        name: "TCS",            price: null, change: null, base: 3900, type: "India" },
-  { ticker: "HDFCBANK.NS",   name: "HDFC Bank",      price: null, change: null, base: 1700, type: "India" },
-  { ticker: "INFY.NS",       name: "Infosys",        price: null, change: null, base: 1500, type: "India" },
-  { ticker: "ICICIBANK.NS",  name: "ICICI Bank",     price: null, change: null, base: 1250, type: "India" },
-  { ticker: "SBIN.NS",       name: "SBI",            price: null, change: null, base: 820,  type: "India" },
+  { ticker: "RELIANCE.NS",   name: "Reliance Ind.",  price: null, change: null, base: 1430, type: "India" },
+  { ticker: "TCS.NS",        name: "TCS",            price: null, change: null, base: 2465, type: "India" },
+  { ticker: "HDFCBANK.NS",   name: "HDFC Bank",      price: null, change: null, base: 778, type: "India" },
+  { ticker: "INFY.NS",       name: "Infosys",        price: null, change: null, base: 1167, type: "India" },
+  { ticker: "ICICIBANK.NS",  name: "ICICI Bank",     price: null, change: null, base: 1279, type: "India" },
+  { ticker: "SBIN.NS",       name: "SBI",            price: null, change: null, base: 788,  type: "India" },
 ];
 
 const SUGGESTIONS = [
@@ -1187,7 +1187,7 @@ export default function App() {
         <div className="chat-input-bar">
           <input className="chat-input-field" value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage(input)}
-            placeholder="Ask about any stock, crypto, or market trend…" />
+            placeholder="Ask about any NSE/BSE stock or market trend…" />
           <button className="chat-send-btn" onClick={() => sendMessage(input)}>
             <Send size={16} />
           </button>
@@ -1370,7 +1370,7 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <div className="label" style={{ marginBottom: 8, fontSize: 10 }}>Ticker</div>
-              <input className="input-box" value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="e.g. AAPL" />
+              <input className="input-box" value={alertTicker} onChange={e => setAlertTicker(e.target.value.toUpperCase())} placeholder="e.g. RELIANCE.NS" />
             </div>
             <div>
               <div className="label" style={{ marginBottom: 8, fontSize: 10 }}>Price Threshold</div>
