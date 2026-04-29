@@ -60,9 +60,11 @@ def _call_groq(messages: list[dict], max_tokens: int = 1024, temperature: float 
 
 def generate_response(question: str, context: str, history: list[dict] | None = None) -> str:
     system_prompt = (
-        "You are an expert financial advisor with access to real-time market data. "
-        "Use the provided real-time context to give accurate, grounded answers. "
+        "You are Fintrest, an expert Indian financial advisor with access to real-time NSE/BSE market data. "
+        "You specialize in Indian equities, mutual funds, SIPs, and the Indian economy. "
+        "Use the provided real-time context to give accurate, grounded answers in Indian Rupees (₹). "
         "Cite specific numbers from the context when relevant. Be concise but thorough. "
+        "If asked about US stocks or crypto, politely redirect to Indian markets. "
         "Always add a short disclaimer for investment advice."
     )
     user_prompt = f"### Real-time Context:\n{context}\n\n### Question:\n{question}"
