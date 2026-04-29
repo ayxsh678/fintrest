@@ -1,129 +1,143 @@
-/* Fintrest — Global Styles
-   Consumed across the whole app. Do not override colors here locally;
-   add new tokens to tokens.js and surface them here as CSS variables. */
+/* Fintrest — Design System
+   Swiss minimalism meets Bloomberg density. Dark-only. */
 
 :root {
   /* Surfaces */
-  --carbon:         #0F0F10;
-  --carbon-lifted:  #14181A;
-  --carbon-border:  #1C1F22;
-  --obsidian:       #0A0B0C;
+  --bg:        #0F0F11;
+  --surface:   #17171A;
+  --surface2:  #1E1E24;
+
+  /* Borders */
+  --border:    #2A2A32;
+  --border-a:  #3D3D4A;
 
   /* Text */
-  --pearl:          #FAFAF7;
-  --mist:           #A6ADB4;
-  --fog:            #6B7178;
+  --text:      #F0EEE8;
+  --text-sec:  #8C8A9A;
+  --text-ter:  #5A5868;
 
-  /* Accents */
-  --evergreen:      #1F5C46;
-  --evergreen-glow: rgba(31, 92, 70, 0.35);
-  --ember:          #B24A2A;
+  /* Accent — gold, max 3 elements per screen */
+  --accent:    #C8A96E;
 
-  /* Utility */
-  --hairline:       rgba(250, 250, 247, 0.08);
-  --overlay:        rgba(5, 5, 6, 0.72);
+  /* Semantic */
+  --pos:       #4CAF7D;
+  --neg:       #E05C5C;
+  --neutral:   #B8A860;
 
   /* Typography */
-  --font-editorial: "Fraunces", Georgia, serif;
-  --font-ui:        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono:      "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-
-  /* Radii */
-  --radius-sm:      8px;
-  --radius-md:      12px;
-  --radius-lg:      16px;
-  --radius-pill:    999px;
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-ui:      "DM Sans", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
   /* Motion */
-  --ease-standard:  cubic-bezier(0.2, 0.0, 0.0, 1.0);
-  --ease-quint:     cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast:       160ms;
-  --dur-base:       240ms;
-  --dur-smooth:     280ms;
+  --ease-standard: cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  --ease-out:      cubic-bezier(0.0, 0.0, 0.2, 1.0);
+  --dur-fast:      150ms;
+  --dur-base:      200ms;
+  --dur-slow:      300ms;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body, #root { height: 100%; }
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
 
 body {
   margin: 0;
-  background: var(--obsidian);
-  color: var(--pearl);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font-ui);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
 }
 
-code { font-family: var(--font-mono); }
+/* Scrollbars */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-a); }
 
-/* Numbers should always be mono — opt in via .num */
-.num, .mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
-/* Editorial display — opt in via .editorial */
-.editorial {
-  font-family: var(--font-editorial);
-  font-weight: 400;
-  letter-spacing: -0.02em;
-  line-height: 1.04;
-}
-
-/* Small-caps label */
-.label {
+/* Typography helpers */
+.display { font-family: var(--font-display); font-weight: 400; }
+.mono    { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.label   {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--mist);
+  color: var(--text-sec);
 }
 
 /* Selection */
-::selection { background: var(--evergreen); color: var(--pearl); }
+::selection { background: rgba(200,169,110,0.25); color: var(--text); }
 
-/* Scrollbar — subtle on dark */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--carbon-border);
-  border-radius: var(--radius-pill);
+/* Reset common elements */
+button, input, select, textarea {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+  margin: 0;
+  padding: 0;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--fog); }
 
-/* Focus rings — accessible on dark */
-:focus-visible {
-  outline: 2px solid var(--pearl);
-  outline-offset: 2px;
-  border-radius: 2px;
+button   { cursor: pointer; }
+input::placeholder { color: var(--text-ter); }
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);     }
 }
+
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+@keyframes flashPos {
+  0%, 100% { background: transparent; }
+  40%       { background: rgba(76, 175, 125, 0.15); }
+}
+
+@keyframes flashNeg {
+  0%, 100% { background: transparent; }
+  40%       { background: rgba(224, 92, 92, 0.15); }
+}
+
+@keyframes progressSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%);  }
+}
+
+@keyframes drawGauge {
+  from { stroke-dashoffset: var(--arc-len); }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Utility */
+.fade-up    { animation: fadeUp    0.28s var(--ease-out) both; }
+.slide-right{ animation: slideRight 0.2s var(--ease-out) both; }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation-duration:       0.01ms !important;
+    animation-iteration-count: 1     !important;
+    transition-duration:      0.01ms !important;
   }
-}
-
-/* Visible focus + hover state for the chart's "open on TradingView"
-   click-through badge. Default browser focus ring is barely visible on
-   the dark background, so paint our own amber ring that matches the
-   rest of the app's accent color. */
-.chart-tv-badge:hover {
-  background: rgba(247, 200, 67, 0.12) !important;
-  color: #f7c843 !important;
-}
-.chart-tv-badge:focus-visible {
-  outline: none;
-  border-color: #f7c843 !important;
-  box-shadow: 0 0 0 2px rgba(247, 200, 67, 0.4);
-  color: #f7c843 !important;
 }

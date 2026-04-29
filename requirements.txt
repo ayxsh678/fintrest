@@ -1,5 +1,4 @@
 cachetools==7.0.3
-cachetools==7.0.5
 fastapi==0.135.3
 feedparser==6.0.12
 pandas==3.0.2

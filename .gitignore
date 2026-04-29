@@ -1,7 +1,7 @@
 # Python
+venv/
 backend/venv/
-backend/__pycache__/
-backend/**/__pycache__/
+**/__pycache__/
 backend/.env
 
 # Node
@@ -19,3 +19,6 @@ backend/adapters/
 **/.env
 .claude/
 backend/finance-ai
+
+# Patch files
+*.patch
