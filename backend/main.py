@@ -17,6 +17,7 @@ from model.inference import (
     explain_term
 )
 import os
+import re
 import uvicorn
 
 import logging
@@ -37,10 +38,17 @@ def validate_config():
 
 # ── CORS ────────────────────────────────────────────────
 _allowed_origin = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
+_vercel_project = os.getenv("VERCEL_PROJECT_SLUG", "")  # e.g. "fintrest-app"
+_origins = [_allowed_origin, "http://localhost:3000", "http://localhost:5173"]
+_origin_regex = (
+    rf"https://{re.escape(_vercel_project)}.*\.vercel\.app"
+    if _vercel_project
+    else None
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_allowed_origin, "http://localhost:3000", "http://localhost:5173"],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=_origins,
+    allow_origin_regex=_origin_regex,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -510,12 +518,96 @@ def route_check_alerts(req: AlertCheckRequest):
     return {"triggered": triggered}
 
 
+# ── India Market Data ──────────────────────────────────
+
+INDICES = {
+    "NIFTY 50":      "^NSEI",
+    "SENSEX":        "^BSESN",
+    "BANK NIFTY":    "^NSEBANK",
+    "NIFTY MIDCAP":  "NIFTY_MIDCAP_100.NS",
+}
+
+NIFTY50_TICKERS = [
+    "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS",
+    "HINDUNILVR.NS","KOTAKBANK.NS","SBIN.NS","BHARTIARTL.NS","ITC.NS",
+    "AXISBANK.NS","LT.NS","BAJFINANCE.NS","ASIANPAINT.NS","MARUTI.NS",
+    "TITAN.NS","SUNPHARMA.NS","ULTRACEMCO.NS","WIPRO.NS","NESTLEIND.NS",
+]
+
+
+@app.get("/indices")
+def get_indices():
+    """Live data for Nifty 50, Sensex, Bank Nifty, Nifty Midcap."""
+    import yfinance as yf
+    result = []
+    for name, symbol in INDICES.items():
+        try:
+            t    = yf.Ticker(symbol)
+            info = t.fast_info
+            price  = round(float(info.last_price), 2) if info.last_price else None
+            prev   = float(info.previous_close) if info.previous_close else None
+            change = round(((price - prev) / prev) * 100, 2) if price and prev else None
+            result.append({"name": name, "symbol": symbol, "price": price, "change_pct": change})
+        except Exception as exc:
+            logger.warning("indices: failed for %s: %s", symbol, exc)
+            result.append({"name": name, "symbol": symbol, "price": None, "change_pct": None})
+    return {"indices": result}
+
+
+@app.get("/search")
+def search_stocks(q: str = ""):
+    """Search Indian stocks by company name or ticker prefix."""
+    from rag.india_stocks import INDIA_COMPANY_MAP
+    if not q or len(q.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+    q_lower = q.strip().lower()
+    matches = []
+    seen    = set()
+    for name, ticker in INDIA_COMPANY_MAP.items():
+        if q_lower in name.lower() or q_lower in ticker.lower():
+            if ticker not in seen:
+                seen.add(ticker)
+                matches.append({"name": name.title(), "ticker": ticker})
+    matches.sort(key=lambda x: (not x["ticker"].lower().startswith(q_lower), x["ticker"]))
+    return {"results": matches[:15]}
+
+
+@app.get("/market/movers")
+def market_movers():
+    """Top 5 gainers and top 5 losers from a subset of Nifty 50 stocks."""
+    import yfinance as yf
+    import concurrent.futures
+
+    def fetch_change(ticker):
+        try:
+            t    = yf.Ticker(ticker)
+            info = t.fast_info
+            price = float(info.last_price) if info.last_price else None
+            prev  = float(info.previous_close) if info.previous_close else None
+            if price and prev and prev > 0:
+                chg = round(((price - prev) / prev) * 100, 2)
+                name = ticker.replace(".NS", "").replace(".BO", "")
+                return {"ticker": ticker, "name": name, "price": round(price, 2), "change_pct": chg}
+        except Exception:
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        results = list(filter(None, ex.map(fetch_change, NIFTY50_TICKERS)))
+
+    results.sort(key=lambda x: x["change_pct"])
+    losers  = results[:5]
+    gainers = list(reversed(results[-5:]))
+    return {"gainers": gainers, "losers": losers}
+
+
 # ── Helper (internal) ──────────────────────────────────
 
 def get_financial_news_for_forex(pair: str) -> str:
     """Fetch news relevant to a forex pair for LLM context."""
     query = pair.replace("/", " ")
-    return get_financial_news(query, time_range="7d")
+    articles = get_financial_news(query, days=7)
+    return " | ".join(a["title"] for a in articles[:5]) if articles else "No recent news."
 
 
 # ── Entry point ────────────────────────────────────────

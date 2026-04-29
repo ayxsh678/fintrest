@@ -53,13 +53,9 @@ const clearSession = async () => {
 };
 
 // ── Data helpers ─────────────────────────────────────────
-const generateSparkline = (base, points = 30) => {
-  let price = base;
-  return Array.from({ length: points }, (_, i) => {
-    price = price + (Math.random() - 0.48) * (base * 0.008);
-    return { i, v: parseFloat(price.toFixed(2)) };
-  });
-};
+// Returns a flat placeholder so we never show fabricated price movement.
+const flatSparkline = (base, points = 30) =>
+  Array.from({ length: points }, (_, i) => ({ i, v: base }));
 
 const WATCHLIST_DEFAULT = [
   { ticker: "RELIANCE.NS",   name: "Reliance Ind.",  price: null, change: null, base: 2950, type: "India" },
@@ -424,7 +420,7 @@ function CompareTable({ data, ticker_a, ticker_b }) {
 function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) {
   const data  = Array.isArray(stock.sparkline) && stock.sparkline.length > 1
     ? stock.sparkline.map((p, i) => ({ i, v: p }))
-    : generateSparkline(stock.base);
+    : flatSparkline(stock.base);
   const isUp  = (stock.change ?? 0) >= 0;
   const color = isUp ? C.pos : C.neg;
   const sym   = currencySymbol();
@@ -810,6 +806,13 @@ export default function App() {
   const [newsLoading, setNewsLoading] = useState({});
   const fetchedNews                   = useRef(new Set());
 
+  // India market data
+  const [indices, setIndices]         = useState([]);
+  const [movers, setMovers]           = useState({ gainers: [], losers: [] });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchOpen, setSearchOpen]   = useState(false);
+
   // ── Effects ────────────────────────────────────────────
   useEffect(() => { if (!getSessionId()) startSession(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -911,6 +914,31 @@ export default function App() {
     poll();
     const t = setInterval(poll, 300_000);
     return () => clearInterval(t);
+  }, []);
+
+  // Fetch indices + movers on mount, refresh every 5 min
+  useEffect(() => {
+    const fetchIndices = async () => {
+      try { const r = await fetch(`${API_URL}/indices`); const d = await r.json(); setIndices(d.indices || []); } catch {}
+    };
+    const fetchMovers = async () => {
+      try { const r = await fetch(`${API_URL}/market/movers`); const d = await r.json(); setMovers({ gainers: d.gainers || [], losers: d.losers || [] }); } catch {}
+    };
+    fetchIndices(); fetchMovers();
+    const t = setInterval(() => { fetchIndices(); fetchMovers(); }, 300_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Stock search
+  const handleSearch = useCallback(async (q) => {
+    setSearchQuery(q);
+    if (q.trim().length < 2) { setSearchResults([]); setSearchOpen(false); return; }
+    try {
+      const r = await fetch(`${API_URL}/search?q=${encodeURIComponent(q.trim())}`);
+      const d = await r.json();
+      setSearchResults(d.results || []);
+      setSearchOpen(true);
+    } catch { setSearchResults([]); }
   }, []);
 
   // ── Handlers ───────────────────────────────────────────
@@ -1094,69 +1122,151 @@ export default function App() {
 
   // ── Market view ────────────────────────────────────────
   function MarketView() {
-    const stockDetailWidth = isMobile ? "100%" : "calc(100% - 280px)";
     return (
-      <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-        {/* Stock list */}
-        {!isMobile && (
-          <div style={{ width: 280, minWidth: 280, borderRight: `1px solid ${C.border}`, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-            {watchlist.map((s, idx) => (
-              <StockCard key={s.ticker} stock={s}
-                isSelected={selectedStock.ticker === s.ticker}
-                onClick={() => handleSelectStock(s)}
-                sentiment={sentiments[s.ticker] ?? null}
-                sentimentLoading={sentimentLoading[s.ticker] ?? false}
-              />
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+
+        {/* ── Indices strip ── */}
+        {indices.length > 0 && (
+          <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.border}`, overflowX: "auto", flexShrink: 0 }}>
+            {indices.map(idx => (
+              <div key={idx.name} style={{ padding: "10px 20px", borderRight: `1px solid ${C.border}`, minWidth: 140, flexShrink: 0 }}>
+                <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.textSec, marginBottom: 2 }}>{idx.name}</div>
+                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 14, color: C.text }}>
+                  {idx.price != null ? idx.price.toLocaleString("en-IN") : "—"}
+                </div>
+                {idx.change_pct != null && (
+                  <div style={{ fontSize: 11, color: idx.change_pct >= 0 ? C.pos : C.neg, marginTop: 1 }}>
+                    {idx.change_pct >= 0 ? "▲" : "▼"} {Math.abs(idx.change_pct).toFixed(2)}%
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
 
-        {/* Chart + detail */}
-        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? 16 : 24, display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Stock header */}
-          <div className="card" style={{ padding: "20px 24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-              <div>
-                <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: C.textSec, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-                  {selectedStock.ticker} · {selectedStock.type}
-                </div>
-                <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 16, color: C.text, marginBottom: 8 }}>{selectedStock.name}</div>
-                <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 36, color: C.text, lineHeight: 1 }}>
-                  {selectedStock.price == null ? "—" : `${currencySymbol()}${selectedStock.price.toLocaleString()}`}
-                </div>
-              </div>
-              <div style={{ textAlign: "right", paddingTop: 4 }}>
-                {selectedStock.change != null && (
-                  <span className={(selectedStock.change ?? 0) >= 0 ? "pill-pos" : "pill-neg"}>
-                    {(selectedStock.change ?? 0) >= 0 ? "▲" : "▼"} {Math.abs(selectedStock.change ?? 0).toFixed(2)}%
-                  </span>
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+          {/* Stock list + search */}
+          {!isMobile && (
+            <div style={{ width: 280, minWidth: 280, borderRight: `1px solid ${C.border}`, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+              {/* Search */}
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.border}`, position: "relative" }}>
+                <input
+                  className="input-box"
+                  style={{ width: "100%", fontSize: 13, padding: "8px 12px" }}
+                  placeholder="Search stocks… e.g. Infosys"
+                  value={searchQuery}
+                  onChange={e => handleSearch(e.target.value)}
+                  onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                  onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
+                />
+                {searchOpen && searchResults.length > 0 && (
+                  <div style={{ position: "absolute", top: "100%", left: 16, right: 16, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, zIndex: 50, maxHeight: 240, overflowY: "auto" }}>
+                    {searchResults.map(r => (
+                      <button key={r.ticker}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+                        onMouseEnter={e => e.currentTarget.style.background = C.surface2}
+                        onMouseLeave={e => e.currentTarget.style.background = "none"}
+                        onClick={() => {
+                          const exists = watchlist.find(s => s.ticker === r.ticker);
+                          if (!exists) {
+                            const newStock = { ticker: r.ticker, name: r.name, price: null, change: null, base: 1000, type: "India" };
+                            setWatchlist(prev => [...prev, newStock]);
+                          }
+                          handleSelectStock(watchlist.find(s => s.ticker === r.ticker) || { ticker: r.ticker, name: r.name, price: null, change: null, base: 1000, type: "India" });
+                          setSearchQuery(""); setSearchOpen(false);
+                        }}>
+                        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.text }}>{r.name}</span>
+                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: C.textSec }}>{r.ticker}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
+              {/* Stock cards */}
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto" }}>
+                {watchlist.map((s) => (
+                  <StockCard key={s.ticker} stock={s}
+                    isSelected={selectedStock.ticker === s.ticker}
+                    onClick={() => handleSelectStock(s)}
+                    sentiment={sentiments[s.ticker] ?? null}
+                    sentimentLoading={sentimentLoading[s.ticker] ?? false}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Chart + detail */}
+          <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? 16 : 24, display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Stock header */}
+            <div className="card" style={{ padding: "20px 24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: C.textSec, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+                    {selectedStock.ticker} · NSE/BSE
+                  </div>
+                  <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 16, color: C.text, marginBottom: 8 }}>{selectedStock.name}</div>
+                  <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 36, color: C.text, lineHeight: 1 }}>
+                    {selectedStock.price == null ? "—" : `${currencySymbol()}${selectedStock.price.toLocaleString("en-IN")}`}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", paddingTop: 4 }}>
+                  {selectedStock.change != null && (
+                    <span className={(selectedStock.change ?? 0) >= 0 ? "pill-pos" : "pill-neg"}>
+                      {(selectedStock.change ?? 0) >= 0 ? "▲" : "▼"} {Math.abs(selectedStock.change ?? 0).toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Time range pills */}
+              <div style={{ display: "flex", gap: 2, marginBottom: 14 }}>
+                {TIME_RANGES.map(tr => (
+                  <button key={tr.label} className={`time-range-pill${chartDays === tr.days ? " active" : ""}`}
+                    onClick={() => setChartDays(tr.days)}>
+                    {tr.label}
+                  </button>
+                ))}
+              </div>
+
+              <TradingViewChart ticker={selectedStock.ticker} height={isMobile ? 180 : 240} days={chartDays} />
             </div>
 
-            {/* Time range pills */}
-            <div style={{ display: "flex", gap: 2, marginBottom: 14 }}>
-              {TIME_RANGES.map(tr => (
-                <button key={tr.label} className={`time-range-pill${chartDays === tr.days ? " active" : ""}`}
-                  onClick={() => setChartDays(tr.days)}>
-                  {tr.label}
+            <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
+            <NewsFeed ticker={selectedStock.ticker} news={newsData[selectedStock.ticker] ?? null} loading={newsLoading[selectedStock.ticker] ?? false} />
+
+            {/* Top Gainers / Losers */}
+            {(movers.gainers.length > 0 || movers.losers.length > 0) && (
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
+                {[{ label: "Top Gainers", data: movers.gainers, color: C.pos }, { label: "Top Losers", data: movers.losers, color: C.neg }].map(({ label, data, color }) => (
+                  <div key={label} className="card" style={{ padding: 16 }}>
+                    <div className="label" style={{ marginBottom: 10 }}>{label}</div>
+                    {data.map(m => (
+                      <div key={m.ticker} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}` }}
+                        onClick={() => handleSelectStock({ ticker: m.ticker, name: m.name, price: m.price, change: m.change_pct, base: m.price, type: "India" })}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}`, cursor: "pointer" }}>
+                        <div>
+                          <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: C.text }}>{m.ticker.replace(".NS","").replace(".BO","")}</div>
+                          <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.textSec }}>₹{m.price.toLocaleString("en-IN")}</div>
+                        </div>
+                        <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color }}>
+                          {m.change_pct >= 0 ? "+" : ""}{m.change_pct.toFixed(2)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Suggestions */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {SUGGESTIONS.map((s, i) => (
+                <button key={i} className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px", borderRadius: 20 }} onClick={() => sendMessage(s)}>
+                  {s}
                 </button>
               ))}
             </div>
-
-            <TradingViewChart ticker={selectedStock.ticker} height={isMobile ? 180 : 240} days={chartDays} />
-          </div>
-
-          <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
-          <NewsFeed ticker={selectedStock.ticker} news={newsData[selectedStock.ticker] ?? null} loading={newsLoading[selectedStock.ticker] ?? false} />
-
-          {/* Suggestions */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {SUGGESTIONS.map((s, i) => (
-              <button key={i} className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px", borderRadius: 20 }} onClick={() => sendMessage(s)}>
-                {s}
-              </button>
-            ))}
           </div>
         </div>
       </div>
@@ -1187,7 +1297,7 @@ export default function App() {
         <div className="chat-input-bar">
           <input className="chat-input-field" value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage(input)}
-            placeholder="Ask about any stock, crypto, or market trend…" />
+            placeholder="Ask about any NSE/BSE stock, mutual fund, or market trend…" />
           <button className="chat-send-btn" onClick={() => sendMessage(input)}>
             <Send size={16} />
           </button>

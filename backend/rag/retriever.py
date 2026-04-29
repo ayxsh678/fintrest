@@ -189,41 +189,8 @@ def build_context(question: str, time_range: str = "7d") -> str:
 
     return "\n".join(context_parts) if context_parts else "No real-time context available."
 
-# ── Aliases for main.py compatibility ─────────────────
 
-def get_financial_news(ticker: str, company_name: str = "", days: int = 7) -> list[dict]:
-    """Alias for get_news_for_ticker — keeps main.py import working."""
-    return get_news_for_ticker(ticker, days=days, company_name=company_name)
-
-
-def get_ohlc_yf(ticker: str, days: int = 180) -> dict:
-    """OHLC data from yfinance — used by chart routes in main.py."""
-    try:
-        t    = yf.Ticker(ticker)
-        hist = t.history(period=f"{days}d", interval="1d")
-
-        if hist.empty:
-            return {"ticker": ticker, "ok": False, "rows": [], "source": None}
-
-        rows = []
-        for date, row in hist.iterrows():
-            rows.append({
-                "time":   date.strftime("%Y-%m-%d"),
-                "open":   round(float(row["Open"]),  2),
-                "high":   round(float(row["High"]),  2),
-                "low":    round(float(row["Low"]),   2),
-                "close":  round(float(row["Close"]), 2),
-                "volume": int(row["Volume"])
-            })
-
-        return {"ticker": ticker, "ok": True, "rows": rows, "source": "Yahoo Finance"}
-
-    except Exception as e:
-        print(f"[get_ohlc_yf] error for {ticker}: {e}")
-        return {"ticker": ticker, "ok": False, "rows": [], "source": None}
-
-
-# ── Aliases & stubs for backward compatibility ─────────
+# ── Constants & aliases ────────────────────────────────
 
 # Constants expected by portfolio.py and comparison.py
 COMPANY_MAP: dict[str, str] = {

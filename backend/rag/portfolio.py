@@ -12,16 +12,16 @@ def get_portfolio_data(tickers: list[str]) -> dict:
     """Fetch data for each ticker — NSE/BSE stocks only."""
 
     def fetch_one(ticker):
-        asset = detect_asset_type(ticker)
+        asset_type = detect_asset_type(ticker)
 
-        if asset["type"] == "india_stock" and asset["identifier"]:
+        if asset_type == "india" and ticker.endswith((".NS", ".BO")):
             return ticker, {
-                "stock":      get_india_stock_data(asset["identifier"]),
-                "earnings":   get_earnings_data(asset["identifier"]),
+                "stock":      get_india_stock_data(ticker),
+                "earnings":   get_earnings_data(ticker),
                 "asset_type": "india_stock",
             }
         else:
-            # Treat any bare ticker (e.g. RELIANCE without suffix) as NSE
+            # Bare ticker (e.g. RELIANCE) — default to NSE
             nse_ticker = ticker if ticker.endswith((".NS", ".BO")) else f"{ticker}.NS"
             return ticker, {
                 "stock":      get_stock_data(nse_ticker),
@@ -71,36 +71,28 @@ def build_portfolio_context(tickers: list[str]) -> str:
 # ── Ticker extractor ───────────────────────────────────
 
 def extract_tickers_from_query(query: str) -> list[str]:
-    """
-    Extract all recognizable tickers from a natural language query.
-    Checks crypto → India stocks → US stocks → raw symbols, in that order.
-    """
+    """Extract NSE/BSE tickers from a natural language query."""
     found       = []
     query_lower = query.lower()
 
-    # Crypto — check by name/symbol
-    for name in sorted(COIN_MAP, key=len, reverse=True):
-        if name in query_lower and name.upper() not in found:
-            found.append(name.upper())
-
-    # India stocks — check by company name
+    # India stocks — match by company name (longest match first)
     for name in sorted(INDIA_COMPANY_MAP, key=len, reverse=True):
         if name in query_lower:
             ticker = INDIA_COMPANY_MAP[name]
             if ticker not in found:
                 found.append(ticker)
 
-    # US stocks — check by company name
+    # Also match by COMPANY_MAP names (shorter alias list)
     for name in sorted(COMPANY_MAP, key=len, reverse=True):
         if name in query_lower:
             ticker = COMPANY_MAP[name]
             if ticker not in found:
                 found.append(ticker)
 
-    # Raw ticker symbols (e.g. "AAPL", "RELIANCE.NS")
+    # Raw .NS/.BO symbols typed directly
     for word in query.upper().split():
         clean = re.sub(r"[^A-Z0-9.&-]", "", word)
-        if clean in KNOWN_TICKERS and clean not in found:
+        if (clean.endswith((".NS", ".BO")) or clean in KNOWN_TICKERS) and clean not in found:
             found.append(clean)
 
     return found
