@@ -281,7 +281,7 @@ def get_earnings_data(ticker: str) -> dict:
 def detect_asset_type(ticker: str) -> str:
     """
     Detect whether a ticker is a US stock, Indian stock, or crypto.
-    Returns: 'india', 'crypto', or 'us'
+    Returns: 'india' or 'crypto' (defaults to india for India-focused app)
     """
     ticker = ticker.upper()
     if ticker.endswith(".NS") or ticker.endswith(".BO"):
@@ -292,7 +292,8 @@ def detect_asset_type(ticker: str) -> str:
     }
     if ticker in crypto_symbols:
         return "crypto"
-    return "us"
+    # Default to India — this app is India-focused
+    return "india"
 
 
 def get_ohlc_yf(ticker: str, days: int = 180) -> dict:
