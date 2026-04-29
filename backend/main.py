@@ -399,7 +399,7 @@ def compare_from_chat(req: CompareFromChatRequest):
     if not result:
         raise HTTPException(
             status_code=400,
-            detail="Could not find two tickers to compare. Try: 'compare AAPL vs TSLA'"
+            detail="Could not find two tickers to compare. Try: 'compare RELIANCE.NS vs TCS.NS'"
         )
     ticker_a, ticker_b = result
     return compare_stocks(CompareRequest(
