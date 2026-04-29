@@ -373,8 +373,8 @@ func sendAlertEmail(alert map[string]interface{}) {
 	body    := fmt.Sprintf(
 		"Your Fintrest alert has triggered!\n\n"+
 			"Ticker:       %s\n"+
-			"Direction:    %s $%s\n"+
-			"Triggered at: $%s\n\n"+
+			"Direction:    %s ₹%s\n"+
+			"Triggered at: ₹%s\n\n"+
 			"Log in to Fintrest to review your portfolio.",
 		ticker, direction, threshold, triggeredPrice,
 	)
@@ -425,7 +425,7 @@ func startAlertPoller() {
 					if !ok {
 						continue
 					}
-					log.Printf("[alert poller] Triggered: %v @ $%v",
+					log.Printf("[alert poller] Triggered: %v @ ₹%v",
 						alert["ticker"], alert["triggered_price"])
 					sendAlertEmail(alert)
 				}
