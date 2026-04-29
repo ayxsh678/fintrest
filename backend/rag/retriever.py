@@ -147,7 +147,7 @@ def get_stock_data(ticker: str) -> dict:
             "price":           info.get("currentPrice") or info.get("regularMarketPrice"),
             "change":          info.get("regularMarketChangePercent"),
             "five_day_change": five_day_change,
-            "market":          "NSE/BSE" if "." in ticker else "NSE/BSE",
+            "market":          "NSE/BSE",
             "currency":        info.get("currency", "INR"),
             "market_cap":      info.get("marketCap"),
             "pe_ratio":        info.get("trailingPE"),

@@ -130,7 +130,7 @@ const sentimentLabel = (s) => {
   if (s <= 38)  return "Bearish";
   return "Neutral";
 };
-const currencySymbol = (_type) => "₹";
+const currencySymbol = () => "₹";
 const maybeTitle      = (v, t = 8) => { const s = String(v ?? ""); return s.length > t ? s : undefined; };
 const fmt = (v) => {
   if (v == null || v === "") return "—";
@@ -151,7 +151,7 @@ function tvSymbolUrl(ticker) {
   if (t.endsWith(".NS")) return `https://www.tradingview.com/symbols/NSE-${t.slice(0,-3)}/`;
   if (t.endsWith(".BO")) return `https://www.tradingview.com/symbols/BSE-${t.slice(0,-3)}/`;
   if (t.includes(":"))  return `https://www.tradingview.com/symbols/${t.replace(":","-")}/`;
-  return null;
+  return `https://www.tradingview.com/symbols/NSE-${t}/`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -427,7 +427,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
     : generateSparkline(stock.base);
   const isUp  = (stock.change ?? 0) >= 0;
   const color = isUp ? C.pos : C.neg;
-  const sym   = currencySymbol(stock.type);
+  const sym   = currencySymbol();
   return (
     <div className={`stock-card${isSelected ? " selected" : ""}`} onClick={onClick}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
@@ -497,7 +497,7 @@ function WatchlistTable({ watchlist, sentiments, sentimentLoading, onSelect }) {
         const isUp  = (s.change ?? 0) >= 0;
         const sent  = sentiments[s.ticker];
         const sLoad = sentimentLoading[s.ticker];
-        const sym   = currencySymbol(s.type);
+        const sym   = currencySymbol();
         return (
           <div key={s.ticker} className="wl-row" style={{ animationDelay: `${idx * 0.05}s` }}
             onClick={() => onSelect(s)}>
@@ -1122,7 +1122,7 @@ export default function App() {
                 </div>
                 <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 16, color: C.text, marginBottom: 8 }}>{selectedStock.name}</div>
                 <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 36, color: C.text, lineHeight: 1 }}>
-                  {selectedStock.price == null ? "—" : `${currencySymbol(selectedStock.type)}${selectedStock.price.toLocaleString()}`}
+                  {selectedStock.price == null ? "—" : `${currencySymbol()}${selectedStock.price.toLocaleString()}`}
                 </div>
               </div>
               <div style={{ textAlign: "right", paddingTop: 4 }}>
