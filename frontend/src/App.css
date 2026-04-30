@@ -143,7 +143,8 @@
 .wl-table { width: 100%; border-collapse: collapse; }
 .wl-header {
   display: grid;
-  grid-template-columns: 110px 1fr 110px 90px 80px;
+  grid-template-columns: minmax(92px, 0.9fr) minmax(120px, 1.4fr) minmax(86px, 0.8fr) minmax(78px, 0.7fr) minmax(92px, 0.8fr);
+  column-gap: 10px;
   padding: 0 24px;
   height: 36px;
   align-items: center;
@@ -151,7 +152,8 @@
 }
 .wl-row {
   display: grid;
-  grid-template-columns: 110px 1fr 110px 90px 80px;
+  grid-template-columns: minmax(92px, 0.9fr) minmax(120px, 1.4fr) minmax(86px, 0.8fr) minmax(78px, 0.7fr) minmax(92px, 0.8fr);
+  column-gap: 10px;
   padding: 0 24px;
   height: 52px;
   align-items: center;
@@ -311,6 +313,7 @@
   font-size: 14px;
   color: #F0EEE8;
   width: 100%;
+  min-width: 0;
   transition: border-color 150ms;
   font-family: "JetBrains Mono", monospace;
 }
@@ -324,6 +327,7 @@
   border-radius: 12px;
   padding: 20px 24px;
   animation: fadeUp 0.28s ease both;
+  min-width: 0;
 }
 .card-accent {
   border-left: 3px solid #C8A96E;
@@ -553,6 +557,22 @@
 }
 @media (max-width: 600px) {
   .port-grid { grid-template-columns: 1fr; }
+  .wl-header,
+  .wl-row {
+    grid-template-columns: minmax(86px, 1fr) minmax(78px, 0.8fr) minmax(86px, 0.9fr);
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .wl-header > :nth-child(2),
+  .wl-row > :nth-child(2),
+  .wl-header > :nth-child(4),
+  .wl-row > :nth-child(4) {
+    display: none;
+  }
+  .chat-bubble-user > div,
+  .chat-bubble-assistant > div {
+    max-width: 94%;
+  }
 }
 .port-mini-card {
   background: #1E1E24;

@@ -94,10 +94,10 @@ var httpClient = &http.Client{
 }
 
 // Kept in sync with CHART_VALID_TICKER in frontend/src/App.js. Allowed
-// characters: alphanumerics plus `.`, `_`, `:`, `-`; length 1..20. Any
+// characters: alphanumerics plus `.`, `_`, `:`, `&`, `-`; length 1..20. Any
 // drift between the two is a footgun (frontend rejects something the
 // gateway happily forwards, or vice versa) so keep them identical.
-var validChartTicker = regexp.MustCompile(`^[A-Za-z0-9._:\-]{1,20}$`)
+var validChartTicker = regexp.MustCompile(`^[A-Za-z0-9._:&\-]{1,20}$`)
 
 func pythonURL() string {
 	url := os.Getenv("PYTHON_SERVICE_URL")
@@ -328,11 +328,11 @@ func proxyPostSlice(path string, body interface{}) ([]interface{}, error) {
 // ── Email notification ─────────────────────────────────
 
 func sendAlertEmail(alert map[string]interface{}) {
-	smtpUser   := os.Getenv("SMTP_USER")
-	smtpPass   := os.Getenv("SMTP_PASS")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPass := os.Getenv("SMTP_PASS")
 	alertEmail := os.Getenv("ALERT_EMAIL")
-	smtpHost   := os.Getenv("SMTP_HOST")
-	smtpPort   := os.Getenv("SMTP_PORT")
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
 
 	if smtpUser == "" || smtpPass == "" || alertEmail == "" {
 		log.Printf("[alert] Email env vars not set — skipping for %v", alert["ticker"])
@@ -359,10 +359,10 @@ func sendAlertEmail(alert map[string]interface{}) {
 		}
 		return fmt.Sprintf("%v", v)
 	}
-	ticker         := fmtField("ticker")
+	ticker := fmtField("ticker")
 	triggeredPrice := fmtField("triggered_price")
-	threshold      := fmtField("threshold")
-	direction      := fmtField("direction")
+	threshold := fmtField("threshold")
+	direction := fmtField("direction")
 
 	if ticker == "N/A" {
 		log.Printf("[alert] Missing ticker in alert payload — skipping email")
@@ -370,7 +370,7 @@ func sendAlertEmail(alert map[string]interface{}) {
 	}
 
 	subject := fmt.Sprintf("Fintrest Alert: %s hit your price target", ticker)
-	body    := fmt.Sprintf(
+	body := fmt.Sprintf(
 		"Your Fintrest alert has triggered!\n\n"+
 			"Ticker:       %s\n"+
 			"Direction:    %s ₹%s\n"+
@@ -379,7 +379,7 @@ func sendAlertEmail(alert map[string]interface{}) {
 		ticker, direction, threshold, triggeredPrice,
 	)
 
-	msg  := fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", alertEmail, subject, body)
+	msg := fmt.Sprintf("To: %s\r\nSubject: %s\r\n\r\n%s", alertEmail, subject, body)
 	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
 
 	if err := smtp.SendMail(smtpAddr, auth, smtpUser,
@@ -488,7 +488,7 @@ func main() {
 			req.TimeRange = "7d"
 		}
 		trackSession(req.SessionID)
-		start   := time.Now()
+		start := time.Now()
 		context := buildContext(req.Question, req.TimeRange)
 		answer, sessionID := generateResponse(req.Question, context, req.SessionID)
 		trackSession(sessionID)
@@ -571,9 +571,9 @@ func main() {
 
 	// ── Sentiment ──────────────────────────────────────
 	r.GET("/sentiment/:ticker", func(c *gin.Context) {
-		ticker  := strings.ToUpper(c.Param("ticker"))
+		ticker := strings.ToUpper(c.Param("ticker"))
 		company := c.DefaultQuery("company", "")
-		path    := "/sentiment/" + url.PathEscape(ticker)
+		path := "/sentiment/" + url.PathEscape(ticker)
 		if company != "" {
 			path += "?company=" + url.QueryEscape(company)
 		}
@@ -588,14 +588,15 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode sentiment data"})
 			return
 		}
+		log.Printf("[sentiment] %s response: %v", ticker, result)
 		c.JSON(http.StatusOK, result)
 	})
 
 	r.GET("/news/:ticker", func(c *gin.Context) {
-		ticker  := strings.ToUpper(c.Param("ticker"))
+		ticker := strings.ToUpper(c.Param("ticker"))
 		company := c.DefaultQuery("company", "")
-		days    := c.DefaultQuery("days", "7")
-		path    := "/news/" + url.PathEscape(ticker) + "?days=" + url.QueryEscape(days)
+		days := c.DefaultQuery("days", "7")
+		path := "/news/" + url.PathEscape(ticker) + "?days=" + url.QueryEscape(days)
 		if company != "" {
 			path += "&company=" + url.QueryEscape(company)
 		}
@@ -763,6 +764,7 @@ func main() {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Comparison service unavailable"})
 			return
 		}
+		log.Printf("[compare] %s vs %s response keys: %v", req.TickerA, req.TickerB, result)
 		c.JSON(http.StatusOK, result)
 	})
 
@@ -917,14 +919,14 @@ func main() {
 
 	// ── Auth (public) ──────────────────────────────────
 	r.POST("/register", handleRegister)
-	r.POST("/login",    handleLogin)
+	r.POST("/login", handleLogin)
 
 	// ── Protected routes ───────────────────────────────
 	authGroup := r.Group("/")
 	authGroup.Use(AuthMiddleware())
 	{
-		authGroup.GET("/watchlist",            handleGetWatchlist)
-		authGroup.POST("/watchlist",           handleAddWatchlist)
+		authGroup.GET("/watchlist", handleGetWatchlist)
+		authGroup.POST("/watchlist", handleAddWatchlist)
 		authGroup.DELETE("/watchlist/:ticker", handleDeleteWatchlist)
 	}
 

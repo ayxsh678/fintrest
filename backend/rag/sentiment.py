@@ -241,9 +241,33 @@ def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
 
 # ── Aggregate sentiment scoring ────────────────────────
 
-def _score_with_groq(ticker: str, headlines: list[str]) -> tuple[float, str]:
-    if not headlines or not GROQ_API_KEY:
-        return 50.0, "Neutral"
+def _heuristic_score(headlines: list[str]) -> tuple[float, str]:
+    positive = {
+        "beat", "beats", "profit", "profits", "surge", "surged", "rally",
+        "rises", "gains", "upgrade", "buyback", "dividend", "record",
+        "growth", "wins", "contract", "raises", "strong",
+    }
+    negative = {
+        "miss", "misses", "loss", "falls", "fell", "decline", "declines",
+        "downgrade", "cuts", "weak", "fraud", "probe", "debt", "slips",
+        "drops", "lower", "pressure",
+    }
+    text = " ".join(headlines).lower()
+    pos = sum(1 for word in positive if re.search(r"\b" + re.escape(word) + r"\b", text))
+    neg = sum(1 for word in negative if re.search(r"\b" + re.escape(word) + r"\b", text))
+    score = max(15.0, min(85.0, 50.0 + ((pos - neg) * 8.0)))
+    label = "Bullish" if score >= 62 else ("Bearish" if score <= 38 else "Neutral")
+    return score, label
+
+
+def _score_with_groq(ticker: str, headlines: list[str]) -> tuple[float | None, str]:
+    if not headlines:
+        logger.info("[sentiment] no headlines for %s; returning insufficient data", ticker)
+        return None, "Insufficient Data"
+    if not GROQ_API_KEY:
+        score, label = _heuristic_score(headlines)
+        logger.info("[sentiment] GROQ_API_KEY missing for %s; heuristic score=%s label=%s", ticker, score, label)
+        return score, label
 
     headlines_text = "\n".join(f"- {h}" for h in headlines[:15])
 
@@ -274,7 +298,9 @@ Respond ONLY with the JSON object. No markdown."""
     })
 
     if not data:
-        return 50.0, "Neutral"
+        score, label = _heuristic_score(headlines)
+        logger.info("[sentiment] Groq unavailable/unparseable for %s; heuristic score=%s label=%s", ticker, score, label)
+        return score, label
 
     try:
         score = max(0.0, min(100.0, float(data.get("score", 50))))
@@ -361,6 +387,7 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
             return dict(_cache[ticker])
 
     headlines    = _fetch_headlines(ticker, company_name)
+    logger.info("[sentiment] %s fetched %d headline(s)", ticker, len(headlines))
     score, label = _score_with_groq(ticker, headlines)
 
     result = {

@@ -163,12 +163,45 @@ def get_india_stock_data(ticker: str, as_dict: bool = False):
     except Exception as e:
         nse = get_nse_quote(ticker)
         if nse:
-            result = {"ticker": ticker, "error": "NSE fallback"} if as_dict else nse_format(ticker, nse)
+            if as_dict:
+                result = {
+                    "ticker":          ticker,
+                    "name":            nse.get("long_name", ticker),
+                    "price":           nse.get("price"),
+                    "change":          nse.get("change_pct"),
+                    "five_day_change": nse.get("change_pct"),
+                    "market":          "NSE/BSE",
+                    "currency":        "INR",
+                    "market_cap":      nse.get("mkt_cap"),
+                    "pe_ratio":        nse.get("pe"),
+                    "week52_high":     nse.get("week_high"),
+                    "week52_low":      nse.get("week_low"),
+                    "rel_volume":      nse.get("rel_vol"),
+                    "eps_actual":      nse.get("eps"),
+                }
+            else:
+                result = nse_format(ticker, nse)
         else:
             av_quote = av_get_quote(ticker)
             if av_quote:
-                result = {"ticker": ticker, "error": "AV fallback"} if as_dict \
-                            else av_format(ticker, av_quote, symbol="₹", label="NSE/BSE")
+                if as_dict:
+                    result = {
+                        "ticker":          ticker,
+                        "name":            av_quote.get("long_name", ticker),
+                        "price":           av_quote.get("price"),
+                        "change":          av_quote.get("change_pct"),
+                        "five_day_change": av_quote.get("change_pct"),
+                        "market":          "NSE/BSE",
+                        "currency":        "INR",
+                        "market_cap":      av_quote.get("mkt_cap"),
+                        "pe_ratio":        av_quote.get("pe"),
+                        "week52_high":     av_quote.get("week_high"),
+                        "week52_low":      av_quote.get("week_low"),
+                        "rel_volume":      av_quote.get("rel_vol"),
+                        "eps_actual":      av_quote.get("eps"),
+                    }
+                else:
+                    result = av_format(ticker, av_quote, symbol="₹", label="NSE/BSE")
             else:
                 result = {"ticker": ticker, "error": str(e)} if as_dict \
                             else f"India stock data unavailable: {str(e)}"

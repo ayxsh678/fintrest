@@ -162,7 +162,7 @@ class ExplainResponse(BaseModel):
 
 class SentimentResponse(BaseModel):
     ticker: str
-    score: float
+    score: float | None
     label: str
     headline_count: int
     headlines: list[str]
@@ -335,7 +335,8 @@ def chart(ticker: str, days: int = 180):
 
     # 3. yfinance as a final safety net.
     try:
-        rows = get_ohlc_yf(ticker_clean, days=days)
+        yf_result = get_ohlc_yf(ticker_clean, days=days)
+        rows = yf_result.get("rows", []) if isinstance(yf_result, dict) else yf_result
         if rows:
             return {"ticker": ticker_clean, "ok": True, "rows": rows, "source": "yfinance"}
     except Exception as exc:  # noqa: BLE001

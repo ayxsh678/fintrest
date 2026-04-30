@@ -164,7 +164,7 @@ const fmt = (v) => {
 const fmtPct = (v) => v != null && v !== "" ? fmt(v) + "%" : "—";
 
 // ── Chart helpers ─────────────────────────────────────────
-const CHART_VALID_TICKER = /^[A-Za-z0-9._:\-]{1,20}$/;
+const CHART_VALID_TICKER = /^[A-Za-z0-9._:&\-]{1,20}$/;
 function tvSymbolUrl(ticker) {
   if (!ticker || !CHART_VALID_TICKER.test(ticker)) return null;
   const t = ticker.toUpperCase();
@@ -173,6 +173,41 @@ function tvSymbolUrl(ticker) {
   if (t.includes(":"))  return `https://www.tradingview.com/symbols/${t.replace(":","-")}/`;
   // Bare tickers without exchange suffix are US stocks by default
   return `https://www.tradingview.com/symbols/NASDAQ-${t}/`;
+}
+
+function normalizeSentimentPayload(data) {
+  if (!data || data.error) return null;
+  if (data.sentiment && typeof data.sentiment === "object") {
+    return {
+      ticker: data.ticker,
+      score: data.sentiment.score ?? null,
+      label: data.sentiment.label ?? "—",
+      headline_count: data.sentiment.headline_count ?? data.sentiment.article_count ?? 0,
+      headlines: data.headlines ?? data.articles?.map(a => a.title).filter(Boolean) ?? [],
+    };
+  }
+  return {
+    ...data,
+    score: data.score ?? null,
+    label: data.label ?? (data.score == null ? "Insufficient Data" : sentimentLabel(data.score)),
+    headline_count: data.headline_count ?? 0,
+    headlines: Array.isArray(data.headlines) ? data.headlines : [],
+  };
+}
+
+function normalizeComparePayload(data, fallbackA, fallbackB) {
+  if (!data || data.error) return data;
+  if (data.data_a || data.data_b) return data;
+  const stockA = data.ticker_a && typeof data.ticker_a === "object" ? data.ticker_a : {};
+  const stockB = data.ticker_b && typeof data.ticker_b === "object" ? data.ticker_b : {};
+  return {
+    ticker_a: stockA.ticker || fallbackA,
+    ticker_b: stockB.ticker || fallbackB,
+    data_a: { stock: stockA, earnings: {} },
+    data_b: { stock: stockB, earnings: {} },
+    verdict: data.verdict || data.answer || "",
+    session_id: data.session_id,
+  };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -403,7 +438,16 @@ function CompareTable({ data, ticker_a, ticker_b }) {
     { label: "52W Low",   a: fmt(stockA.week52_low),       b: fmt(stockB.week52_low)       },
     { label: "Rel Vol",   a: fmt(stockA.rel_volume),       b: fmt(stockB.rel_volume)       },
   ];
+  const hasAnyData = rows.some(row => row.a !== "—" || row.b !== "—");
   const isDown = (v) => typeof v === "string" && v.startsWith("-");
+
+  if (!hasAnyData) {
+    return (
+      <div className="card" style={{ padding: 16, fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.textSec }}>
+        No comparison metrics returned for these tickers. Check the symbols and try again.
+      </div>
+    );
+  }
 
   return (
     <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
@@ -448,7 +492,7 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
     : generateSparkline(stock.base);
   const isUp  = (stock.change ?? 0) >= 0;
   const color = isUp ? C.pos : C.neg;
-  const sym   = currencySymbol();
+  const sym   = currencySymbol(stock.type);
   return (
     <div className={`stock-card${isSelected ? " selected" : ""}`} onClick={onClick}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
@@ -518,7 +562,7 @@ function WatchlistTable({ watchlist, sentiments, sentimentLoading, onSelect }) {
         const isUp  = (s.change ?? 0) >= 0;
         const sent  = sentiments[s.ticker];
         const sLoad = sentimentLoading[s.ticker];
-        const sym   = currencySymbol();
+        const sym   = currencySymbol(s.type);
         return (
           <div key={s.ticker} className="wl-row" style={{ animationDelay: `${idx * 0.05}s` }}
             onClick={() => onSelect(s)}>
@@ -912,7 +956,8 @@ export default function App() {
     try {
       const res  = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
       const data = await res.json();
-      setSentiments(prev => ({ ...prev, [ticker]: data }));
+      console.debug("[sentiment]", ticker, data);
+      setSentiments(prev => ({ ...prev, [ticker]: normalizeSentimentPayload(data) }));
     } catch {
       fetchedSentiments.current.delete(ticker);
       setSentiments(prev => ({ ...prev, [ticker]: null }));
@@ -1017,7 +1062,9 @@ export default function App() {
     try {
       const sid  = getSessionId() || await startSession();
       const res  = await fetch(`${API_URL}/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticker_a: ta, ticker_b: tb, session_id: sid }) });
-      const data = await res.json();
+      const raw = await res.json();
+      console.debug("[compare]", ta, tb, raw);
+      const data = normalizeComparePayload(raw, ta, tb);
       if (data.session_id) setSessionId(data.session_id);
       setCompareData(data);
       fetchSentiment(ta); fetchSentiment(tb);
@@ -1052,13 +1099,15 @@ export default function App() {
       } else {
         if (data.session_id) setSessionId(data.session_id);
         if (isCompare && data.ticker_a) {
-          setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data);
-          setMessages(prev => [...prev, mkMsg("assistant", data.verdict, { sources: ["Yahoo Finance"] })]);
+          const normalized = normalizeComparePayload(data, data.ticker_a, data.ticker_b);
+          setCompareA(normalized.ticker_a); setCompareB(normalized.ticker_b); setCompareData(normalized);
+          setMessages(prev => [...prev, mkMsg("assistant", normalized.verdict || "Comparison data loaded.", { sources: ["Yahoo Finance"] })]);
         } else if (isPortfolio && data.tickers) {
           setPortfolio(data.tickers); setPortfolioData(data);
           setMessages(prev => [...prev, mkMsg("assistant", data.summary, { sources: ["Yahoo Finance"] })]);
         } else {
-          setMessages(prev => [...prev, mkMsg("assistant", data.answer || data.detail || "No response received.", { sources: data.sources || [], responseTime: data.response_time })]);
+          const answer = typeof data.answer === "string" ? data.answer : data.detail || data.error || "No response received.";
+          setMessages(prev => [...prev, mkMsg("assistant", answer, { sources: data.sources || [], responseTime: data.response_time })]);
         }
       }
     } catch {
@@ -1169,7 +1218,7 @@ export default function App() {
                 </div>
                 <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 16, color: C.text, marginBottom: 8 }}>{selectedStock.name}</div>
                 <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 36, color: C.text, lineHeight: 1 }}>
-                  {selectedStock.price == null ? "—" : `${currencySymbol()}${selectedStock.price.toLocaleString()}`}
+                  {selectedStock.price == null ? "—" : `${currencySymbol(selectedStock.type)}${selectedStock.price.toLocaleString()}`}
                 </div>
               </div>
               <div style={{ textAlign: "right", paddingTop: 4 }}>
