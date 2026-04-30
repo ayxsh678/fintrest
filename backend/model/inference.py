@@ -4,6 +4,7 @@ import random
 import time
 
 import requests
+from model.prompts import GENERAL_QA, PORTFOLIO_ANALYSIS, EARNINGS_BRIEF, PORTFOLIO_AUTOPSY
 
 logger = logging.getLogger(__name__)
 
@@ -28,22 +29,7 @@ def _sleep_backoff(attempt: int, retry_after: str | None = None) -> None:
     delay = min(BASE_BACKOFF * (2 ** attempt), MAX_BACKOFF)
     time.sleep(delay + random.uniform(0, 0.25 * delay))
 
-SYSTEM_PROMPT = """You are an expert financial analyst delivering insights to traders and investors.
-
-News sources are ranked by credibility:
-- TakeToday (verified source) — highest trust, prioritize this
-- NewsAPI articles — standard trust, cite source name and freshness
-
-When answering, always structure your response as:
-1. WHAT: The key fact (1-2 sentences, most important numbers only)
-2. WHY: What caused this movement
-3. CONTEXT: Has this happened before? How often? What usually followed?
-4. SIGNAL: Noise or actionable? What to watch next?
-5. AVOID: If this pattern repeats or continues, what should the investor NOT do?
-
-Always cite which source the news came from and how fresh it is.
-Add a disclaimer for investment advice.
-If the user refers to a previous question, use conversation history to resolve context."""
+SYSTEM_PROMPT = GENERAL_QA
 
 
 def _attempt_call(model: str, messages: list[dict], max_tokens: int,
@@ -223,6 +209,67 @@ Be compressed and direct. Add a disclaimer."""
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user",   "content": user_message},
     ])
+
+
+def generate_portfolio_analysis(portfolio_context: str, risk_flags: list) -> str:
+    flags_text = ""
+    if risk_flags:
+        flags_text = "\n\nRisk flags already identified:\n" + "\n".join(
+            f"- [{f.severity.upper()}] {f.flag} → {f.action}"
+            for f in risk_flags
+        )
+
+    user_message = f"""### Portfolio Data:
+{portfolio_context}{flags_text}
+
+### Task:
+Write a 3–4 sentence portfolio intelligence brief for this investor.
+Cover: overall portfolio health, the most important risk to act on, and one concrete next step.
+Be direct. Format numbers in Indian notation (₹ lakhs/crores)."""
+
+    return _call_groq([
+        {"role": "system", "content": PORTFOLIO_ANALYSIS},
+        {"role": "user",   "content": user_message},
+    ], max_tokens=512)
+
+
+def generate_earnings_brief(ticker: str, earnings_data: dict, news_text: str) -> str:
+    next_date    = earnings_data.get("next_earnings_date", "unknown")
+    eps_est      = earnings_data.get("eps_estimate", "N/A")
+    eps_actual   = earnings_data.get("eps_actual", "N/A")
+    forward_pe   = earnings_data.get("forward_pe", "N/A")
+
+    user_message = f"""### Stock: {ticker}
+Next Earnings Date: {next_date}
+EPS Estimate (forward): {eps_est}
+EPS Actual (trailing): {eps_actual}
+Forward P/E: {forward_pe}
+
+### Recent News:
+{news_text or "No recent news available."}
+
+### Task:
+Write a pre-earnings intelligence brief for {ticker}.
+Follow the research note structure. Be specific about what numbers to watch."""
+
+    return _call_groq([
+        {"role": "system", "content": EARNINGS_BRIEF},
+        {"role": "user",   "content": user_message},
+    ], max_tokens=600)
+
+
+def generate_portfolio_autopsy(trades_context: str) -> str:
+    user_message = f"""### Trade History Analysis:
+{trades_context}
+
+### Task:
+Write a portfolio autopsy narrative. Cover what worked, what failed, why, and concrete lessons.
+Be honest — the goal is actionable learning, not validation."""
+
+    return _call_groq([
+        {"role": "system", "content": PORTFOLIO_AUTOPSY},
+        {"role": "user",   "content": user_message},
+    ], max_tokens=700)
 
 
 def explain_term(term: str, context: str = "",

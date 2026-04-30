@@ -3,6 +3,7 @@ import concurrent.futures
 from rag.retriever import (
     get_stock_data, get_earnings_data, detect_asset_type, COMPANY_MAP, KNOWN_TICKERS
 )
+from rag.crypto import get_crypto_data, get_coin_id, COIN_MAP
 from rag.india_stocks import get_india_stock_data, INDIA_COMPANY_MAP
 
 
@@ -12,21 +13,27 @@ def get_portfolio_data(tickers: list[str]) -> dict:
     """Fetch data for each ticker — NSE/BSE stocks only."""
 
     def fetch_one(ticker):
-        asset = detect_asset_type(ticker)
+        # detect_asset_type returns a string: 'india', 'crypto', or 'us'
+        asset_type = detect_asset_type(ticker)
 
-        if asset["type"] == "india_stock" and asset["identifier"]:
+        if asset_type == "crypto":
+            coin_id = get_coin_id(ticker.lower()) or ticker.lower()
             return ticker, {
-                "stock":      get_india_stock_data(asset["identifier"]),
-                "earnings":   get_earnings_data(asset["identifier"]),
+                "stock":      get_crypto_data(coin_id),
+                "earnings":   "N/A — crypto asset",
+                "asset_type": "crypto",
+            }
+        elif asset_type == "india":
+            return ticker, {
+                "stock":      get_india_stock_data(ticker),
+                "earnings":   get_earnings_data(ticker),
                 "asset_type": "india_stock",
             }
         else:
-            # Treat any bare ticker (e.g. RELIANCE without suffix) as NSE
-            nse_ticker = ticker if ticker.endswith((".NS", ".BO")) else f"{ticker}.NS"
             return ticker, {
-                "stock":      get_stock_data(nse_ticker),
-                "earnings":   get_earnings_data(nse_ticker),
-                "asset_type": "india_stock",
+                "stock":      get_stock_data(ticker),
+                "earnings":   get_earnings_data(ticker),
+                "asset_type": "us_stock",
             }
 
     results = {}

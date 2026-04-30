@@ -1,7 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from rag.retriever import build_context, get_stock_data, get_financial_news, get_ohlc_yf
+from rag.retriever import (
+    build_context, get_stock_data, get_financial_news, get_ohlc_yf,
+    get_earnings_data, get_news_for_ticker,
+)
 from rag.portfolio import build_portfolio_context, extract_tickers_from_query, get_portfolio_data
 from rag.comparison import build_comparison_context, extract_comparison_tickers, get_comparison_data
 from rag.memory import create_session, get_history, append_to_history, clear_session
@@ -14,9 +17,12 @@ from rag.forex import detect_forex_query, get_forex_data, get_all_forex_snapshot
 from model.inference import (
     generate_response, generate_portfolio_summary,
     generate_comparison_verdict, generate_forex_insight,
-    explain_term
+    explain_term, generate_portfolio_analysis, generate_earnings_brief,
+    generate_portfolio_autopsy,
 )
 import os
+import time
+import concurrent.futures
 import uvicorn
 
 import logging
@@ -39,7 +45,12 @@ def validate_config():
 _allowed_origin = os.getenv("ALLOWED_ORIGIN", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_allowed_origin, "http://localhost:3000", "http://localhost:5173"],
+    allow_origins=[
+        _allowed_origin,
+        "https://finance-ai-8qu9.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ],
     allow_origin_regex=r"https://.*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
@@ -155,6 +166,38 @@ class SentimentResponse(BaseModel):
     label: str
     headline_count: int
     headlines: list[str]
+
+
+class Holding(BaseModel):
+    ticker: str
+    quantity: int
+    avg_buy_price: float
+
+class PortfolioAnalysisRequest(BaseModel):
+    holdings: list[Holding]
+    user_context: str = ""
+
+class RiskFlag(BaseModel):
+    severity: str   # "high" | "medium" | "low"
+    flag: str
+    action: str
+
+class PortfolioAnalysisResponse(BaseModel):
+    total_value_inr: float
+    holdings_summary: list[dict]
+    risk_flags: list[RiskFlag]
+    narrative_brief: str
+    response_time: float
+
+class Trade(BaseModel):
+    ticker: str
+    action: str     # "buy" | "sell"
+    quantity: int
+    price: float
+    date: str       # ISO format e.g. "2024-01-15"
+
+class PortfolioAutopsyRequest(BaseModel):
+    trades: list[Trade]
 
 
 # ── Health ─────────────────────────────────────────────
@@ -510,12 +553,224 @@ def route_check_alerts(req: AlertCheckRequest):
     return {"triggered": triggered}
 
 
+# ── Analyze Portfolio (structured, with risk flags) ────
+
+@app.post("/analyze-portfolio", response_model=PortfolioAnalysisResponse)
+def analyze_portfolio_v2(req: PortfolioAnalysisRequest):
+    if not req.holdings:
+        raise HTTPException(status_code=400, detail="No holdings provided")
+    if len(req.holdings) > 20:
+        raise HTTPException(status_code=400, detail="Maximum 20 holdings")
+
+    start = time.time()
+    tickers = [h.ticker.upper().strip() for h in req.holdings]
+
+    # Fetch live stock data concurrently
+    stock_data: dict[str, dict] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(get_stock_data, t): t for t in tickers}
+        for future in concurrent.futures.as_completed(futures):
+            t = futures[future]
+            try:
+                stock_data[t] = future.result()
+            except Exception:
+                stock_data[t] = {"ticker": t, "error": "Data unavailable"}
+
+    # Build holdings summary + total value
+    holdings_summary: list[dict] = []
+    total_value = 0.0
+    for holding in req.holdings:
+        ticker = holding.ticker.upper().strip()
+        data   = stock_data.get(ticker, {})
+        cur    = data.get("price") or holding.avg_buy_price
+        cur_val  = cur * holding.quantity
+        cost_val = holding.avg_buy_price * holding.quantity
+        pnl_pct  = ((cur - holding.avg_buy_price) / holding.avg_buy_price * 100
+                    if holding.avg_buy_price else 0)
+        total_value += cur_val
+        holdings_summary.append({
+            "ticker":         ticker,
+            "name":           data.get("name", ticker),
+            "quantity":       holding.quantity,
+            "avg_buy_price":  holding.avg_buy_price,
+            "current_price":  round(cur, 2),
+            "current_value":  round(cur_val, 2),
+            "cost_basis":     round(cost_val, 2),
+            "pnl_pct":        round(pnl_pct, 2),
+            "weight":         0.0,
+            "pe_ratio":       data.get("pe_ratio"),
+            "week52_high":    data.get("week52_high"),
+            "week52_low":     data.get("week52_low"),
+        })
+
+    # Calculate portfolio weights
+    for item in holdings_summary:
+        item["weight"] = round(item["current_value"] / total_value * 100, 2) if total_value else 0
+
+    # Concentration risk flags
+    risk_flags: list[RiskFlag] = []
+    for item in holdings_summary:
+        w = item["weight"]
+        if w > 30:
+            risk_flags.append(RiskFlag(
+                severity="high",
+                flag=f"Concentration risk: {item['ticker']} is {w:.1f}% of portfolio",
+                action=f"Trim {item['ticker']} to below 25% of portfolio",
+            ))
+        elif w > 20:
+            risk_flags.append(RiskFlag(
+                severity="medium",
+                flag=f"High concentration: {item['ticker']} is {w:.1f}% of portfolio",
+                action=f"Monitor {item['ticker']}; rebalance if it grows further",
+            ))
+
+    india_weight = sum(
+        item["weight"] for item in holdings_summary
+        if ".NS" in item["ticker"] or ".BO" in item["ticker"]
+    )
+    if india_weight < 20 and total_value > 0:
+        risk_flags.append(RiskFlag(
+            severity="low",
+            flag="Low India allocation: less than 20% in Indian equities",
+            action="Consider adding Nifty 50 large-caps for domestic exposure",
+        ))
+
+    # Build LLM context string
+    ctx_lines = [
+        f"Portfolio Total Value: ₹{total_value:,.2f}",
+        f"Holdings ({len(holdings_summary)}):",
+    ]
+    for item in holdings_summary:
+        ctx_lines.append(
+            f"  {item['ticker']} ({item['name']}): {item['weight']:.1f}% weight | "
+            f"P&L: {item['pnl_pct']:+.2f}% | Price: ₹{item['current_price']} | "
+            f"P/E: {item.get('pe_ratio') or 'N/A'}"
+        )
+    if req.user_context:
+        ctx_lines.append(f"Investor context: {req.user_context}")
+
+    narrative = generate_portfolio_analysis("\n".join(ctx_lines), risk_flags)
+
+    return PortfolioAnalysisResponse(
+        total_value_inr=round(total_value, 2),
+        holdings_summary=holdings_summary,
+        risk_flags=risk_flags,
+        narrative_brief=narrative,
+        response_time=round(time.time() - start, 2),
+    )
+
+
+# ── Earnings Brief ─────────────────────────────────────
+
+@app.get("/earnings-brief/{ticker}")
+def earnings_brief(ticker: str):
+    ticker_clean = ticker.upper().strip()
+    if not ticker_clean:
+        raise HTTPException(status_code=400, detail="Ticker cannot be empty")
+
+    earnings  = get_earnings_data(ticker_clean)
+    news      = get_news_for_ticker(ticker_clean, days=30)
+    news_text = "\n".join(
+        f"- {a['title']} ({a['published_at']})" for a in news[:5]
+    )
+    brief = generate_earnings_brief(ticker_clean, earnings, news_text)
+
+    return {
+        "ticker":             ticker_clean,
+        "next_earnings_date": earnings.get("next_earnings_date"),
+        "eps_estimate":       earnings.get("eps_estimate"),
+        "eps_actual":         earnings.get("eps_actual"),
+        "forward_pe":         earnings.get("forward_pe"),
+        "brief":              brief,
+    }
+
+
+# ── Portfolio Autopsy ──────────────────────────────────
+
+@app.post("/portfolio-autopsy")
+def portfolio_autopsy(req: PortfolioAutopsyRequest):
+    if not req.trades:
+        raise HTTPException(status_code=400, detail="No trades provided")
+    if len(req.trades) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 trades")
+
+    # FIFO P&L matching per ticker
+    from collections import defaultdict
+    open_lots: dict[str, list[dict]] = defaultdict(list)
+    realized: list[dict] = []
+
+    for trade in sorted(req.trades, key=lambda t: t.date):
+        t = trade.ticker.upper()
+        if trade.action.lower() == "buy":
+            open_lots[t].append({"qty": trade.quantity, "price": trade.price, "date": trade.date})
+        elif trade.action.lower() == "sell":
+            remaining = trade.quantity
+            for lot in open_lots[t]:
+                if remaining <= 0:
+                    break
+                matched  = min(remaining, lot["qty"])
+                pnl      = (trade.price - lot["price"]) * matched
+                pnl_pct  = ((trade.price - lot["price"]) / lot["price"] * 100
+                            if lot["price"] else 0)
+                realized.append({
+                    "ticker":     t,
+                    "buy_date":   lot["date"],
+                    "sell_date":  trade.date,
+                    "quantity":   matched,
+                    "buy_price":  lot["price"],
+                    "sell_price": trade.price,
+                    "pnl":        round(pnl, 2),
+                    "pnl_pct":    round(pnl_pct, 2),
+                })
+                lot["qty"]  -= matched
+                remaining   -= matched
+            open_lots[t] = [l for l in open_lots[t] if l["qty"] > 0]
+
+    total_pnl = sum(r["pnl"] for r in realized)
+    winners   = sorted([r for r in realized if r["pnl"] > 0],  key=lambda x: x["pnl_pct"], reverse=True)
+    losers    = sorted([r for r in realized if r["pnl"] <= 0], key=lambda x: x["pnl_pct"])
+
+    ctx_lines = [
+        f"Total Realized P&L: ₹{total_pnl:,.2f}",
+        f"Trades analyzed: {len(realized)} | Winners: {len(winners)} | Losers: {len(losers)}",
+    ]
+    if winners:
+        top = winners[0]
+        ctx_lines.append(
+            f"Best trade: {top['ticker']} {top['buy_date']}→{top['sell_date']} "
+            f"+{top['pnl_pct']:.1f}% (₹{top['pnl']:,.0f})"
+        )
+    if losers:
+        worst = losers[0]
+        ctx_lines.append(
+            f"Worst trade: {worst['ticker']} {worst['buy_date']}→{worst['sell_date']} "
+            f"{worst['pnl_pct']:.1f}% (₹{worst['pnl']:,.0f})"
+        )
+    for r in realized[:10]:
+        sign = "+" if r["pnl"] >= 0 else ""
+        ctx_lines.append(
+            f"  {r['ticker']}: Buy ₹{r['buy_price']} on {r['buy_date']}, "
+            f"Sell ₹{r['sell_price']} on {r['sell_date']} → {sign}{r['pnl_pct']:.1f}%"
+        )
+
+    narrative = generate_portfolio_autopsy("\n".join(ctx_lines))
+
+    return {
+        "total_pnl":       round(total_pnl, 2),
+        "trade_count":     len(realized),
+        "winners":         len(winners),
+        "losers":          len(losers),
+        "realized_trades": realized,
+        "narrative":       narrative,
+    }
+
+
 # ── Helper (internal) ──────────────────────────────────
 
 def get_financial_news_for_forex(pair: str) -> str:
     """Fetch news relevant to a forex pair for LLM context."""
     query = pair.replace("/", " ")
-    return get_financial_news(query, time_range="7d")
+    return get_financial_news(query, days=7)
 
 
 # ── Entry point ────────────────────────────────────────
