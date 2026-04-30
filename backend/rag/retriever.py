@@ -147,8 +147,8 @@ def get_stock_data(ticker: str) -> dict:
             "price":           info.get("currentPrice") or info.get("regularMarketPrice"),
             "change":          info.get("regularMarketChangePercent"),
             "five_day_change": five_day_change,
-            "market":          "NSE/BSE",
-            "currency":        info.get("currency", "INR"),
+            "market":          "NSE/BSE" if (ticker.upper().endswith(".NS") or ticker.upper().endswith(".BO")) else "US",
+            "currency":        info.get("currency", "USD"),
             "market_cap":      info.get("marketCap"),
             "pe_ratio":        info.get("trailingPE"),
             "week52_high":     info.get("fiftyTwoWeekHigh"),
@@ -163,25 +163,25 @@ def get_stock_data(ticker: str) -> dict:
 # ── Context builder (used by /ask) ─────────────────────
 
 def build_context(question: str, time_range: str = "7d") -> str:
-    """
-    Assembles RAG context string for the /ask endpoint.
-    Existing logic — keep as-is.
-    """
+    """Assembles RAG context string for the /ask endpoint."""
+    _days_map = {"24h": 1, "3d": 3, "7d": 7, "30d": 30, "1y": 90}
+    days = _days_map.get(time_range, 7)
+
     context_parts = []
 
-    # Extract ticker from question if present
     import re
     tickers = re.findall(r'\b[A-Z]{2,5}(?:\.[A-Z]{2})?\b', question)
 
-    for ticker in tickers[:2]:  # cap at 2 tickers per query
+    for ticker in tickers[:2]:
         stock = get_stock_data(ticker)
         if "error" not in stock:
             context_parts.append(
                 f"Stock: {ticker} | Price: {stock.get('price')} | "
-                f"Change: {stock.get('change', 0):.2f}%"
+                f"Change: {stock.get('change', 0):.2f}% | "
+                f"Market: {stock.get('market', 'Unknown')}"
             )
 
-        news = get_news_for_ticker(ticker, days=7)
+        news = get_news_for_ticker(ticker, days=days)
         if news:
             context_parts.append("News: " + " | ".join(
                 a["title"] for a in news[:3]

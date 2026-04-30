@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { AreaChart, Area, YAxis, ResponsiveContainer } from "recharts";
 import {
   TrendingUp, MessageSquare, Bookmark, ArrowLeftRight, PieChart,
-  Bell, LogOut, Send, Plus, X, MoreHorizontal,
+  Bell, LogOut, Send, Plus, X, MoreHorizontal, Copy, Check,
 } from "lucide-react";
 import Aperture from "./Aperture";
 import "./App.css";
@@ -53,10 +53,16 @@ const clearSession = async () => {
 };
 
 // ── Data helpers ─────────────────────────────────────────
-const generateSparkline = (base, points = 30) => {
+// Seeded RNG — same ticker always produces same sparkline shape, no re-render flicker
+function seededRng(seed) {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+}
+const generateSparkline = (base, points = 30, seed = 42) => {
+  const rng = seededRng(seed);
   let price = base;
   return Array.from({ length: points }, (_, i) => {
-    price = price + (Math.random() - 0.48) * (base * 0.008);
+    price += (rng() - 0.48) * (base * 0.008);
     return { i, v: parseFloat(price.toFixed(2)) };
   });
 };
@@ -69,6 +75,9 @@ const WATCHLIST_DEFAULT = [
   { ticker: "ICICIBANK.NS",  name: "ICICI Bank",     price: null, change: null, base: 1279, type: "India" },
   { ticker: "SBIN.NS",       name: "SBI",            price: null, change: null, base: 788,  type: "India" },
 ];
+
+let _msgSeq = 0;
+const mkMsg = (role, content, extras = {}) => ({ _id: ++_msgSeq, role, content, ...extras });
 
 const SUGGESTIONS = [
   "Should I buy Reliance now?",
@@ -130,13 +139,24 @@ const sentimentLabel = (s) => {
   if (s <= 38)  return "Bearish";
   return "Neutral";
 };
-const currencySymbol = () => "₹";
+const currencySymbol = (type) => type === "India" ? "₹" : type === "Crypto" ? "" : "$";
 const maybeTitle      = (v, t = 8) => { const s = String(v ?? ""); return s.length > t ? s : undefined; };
+
+// Indian notation: ₹2000 Cr, ₹45 L, etc.
+const fmtInr = (v) => {
+  if (v == null || v === "") return "—";
+  if (typeof v !== "number") return String(v);
+  if (v >= 1e11) return (v / 1e7).toFixed(0) + " Cr";
+  if (v >= 1e7)  return (v / 1e7).toFixed(2) + " Cr";
+  if (v >= 1e5)  return (v / 1e5).toFixed(2) + " L";
+  return v.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+};
 const fmt = (v) => {
   if (v == null || v === "") return "—";
   if (typeof v === "number") {
-    if (v > 1e9) return (v / 1e9).toFixed(2) + "B";
-    if (v > 1e6) return (v / 1e6).toFixed(2) + "M";
+    if (v > 1e12) return (v / 1e12).toFixed(2) + "T";
+    if (v > 1e9)  return (v / 1e9).toFixed(2) + "B";
+    if (v > 1e6)  return (v / 1e6).toFixed(2) + "M";
     return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
   return String(v);
@@ -151,7 +171,8 @@ function tvSymbolUrl(ticker) {
   if (t.endsWith(".NS")) return `https://www.tradingview.com/symbols/NSE-${t.slice(0,-3)}/`;
   if (t.endsWith(".BO")) return `https://www.tradingview.com/symbols/BSE-${t.slice(0,-3)}/`;
   if (t.includes(":"))  return `https://www.tradingview.com/symbols/${t.replace(":","-")}/`;
-  return `https://www.tradingview.com/symbols/NSE-${t}/`;
+  // Bare tickers without exchange suffix are US stocks by default
+  return `https://www.tradingview.com/symbols/NASDAQ-${t}/`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -657,14 +678,23 @@ function TradingViewChart({ ticker, height = 220, days = 180 }) {
 
 // ── Chat bubble ───────────────────────────────────────────
 function ChatBubble({ msg }) {
-  const isUser = msg.role === "user";
+  const isUser  = msg.role === "user";
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content || "").then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
   return (
-    <div className={isUser ? "chat-bubble-user" : "chat-bubble-assistant"}>
+    <div className={isUser ? "chat-bubble-user" : "chat-bubble-assistant"} style={{ position: "relative" }}>
       <div>
         {msg.content}
-        {!isUser && msg.sources?.length > 0 && (
-          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            {msg.sources.map((s, i) => (
+        {!isUser && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {msg.sources?.map((s, i) => (
               <span key={i} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 20, padding: "2px 10px", fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.textSec }}>
                 {s}
               </span>
@@ -674,6 +704,13 @@ function ChatBubble({ msg }) {
                 {msg.responseTime}s
               </span>
             )}
+            <button
+              onClick={handleCopy}
+              title="Copy response"
+              style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: copied ? C.pos : C.textTer, padding: "2px 4px", display: "flex", alignItems: "center", gap: 3, fontSize: 11, fontFamily: "'DM Sans',sans-serif", transition: "color 150ms" }}
+            >
+              {copied ? <><Check size={11} /> Copied</> : <><Copy size={11} /> Copy</>}
+            </button>
           </div>
         )}
       </div>
@@ -773,7 +810,7 @@ export default function App() {
   const [chartDays, setChartDays]           = useState(180);
 
   // Chat
-  const [messages, setMessages]   = useState([{ role: "assistant", content: "Hi, I'm Fintrest. Ask me about NSE/BSE stocks, mutual funds, SIPs, or anything else about investing in India — and I'll tell you what the numbers actually say.", sources: [] }]);
+  const [messages, setMessages]   = useState([mkMsg("assistant", "Hi, I'm Fintrest. Ask me about NSE/BSE stocks, mutual funds, SIPs, or anything else about investing in India — and I'll tell you what the numbers actually say.", { sources: [] })]);
   const [input, setInput]         = useState("");
   const [loading, setLoading]     = useState(false);
   const [timeRange, setTimeRange] = useState("7d");
@@ -788,6 +825,7 @@ export default function App() {
   // Portfolio (full analysis — holdings with qty + avg price)
   const [holdings, setHoldings]               = useState([]);
   const [holdingInput, setHoldingInput]       = useState({ ticker: "", quantity: "", avgPrice: "" });
+  const [holdingError, setHoldingError]       = useState("");
   const [analysisResult, setAnalysisResult]   = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [portMode, setPortMode]               = useState("analyze"); // "analyze" | "simple"
@@ -829,8 +867,8 @@ export default function App() {
         const res  = await fetch(`${API_URL}/session/${sid}/history`);
         if (!res.ok) return;
         const data = await res.json();
-        const hist = (data.messages || []).map(m => ({ role: m.role, content: m.content, sources: [] }));
-        if (hist.length) setMessages([{ role: "assistant", content: "Welcome back. Resuming your previous conversation.", sources: [] }, ...hist]);
+        const hist = (data.messages || []).map(m => mkMsg(m.role, m.content, { sources: [] }));
+        if (hist.length) setMessages([mkMsg("assistant", "Welcome back. Resuming your previous conversation.", { sources: [] }), ...hist]);
       } catch {}
     })();
   }, []);
@@ -992,8 +1030,9 @@ export default function App() {
     const lower       = question.toLowerCase();
     const isCompare   = lower.includes(" vs ") || lower.includes("compare ");
     const isPortfolio = lower.includes("portfolio") || lower.includes("analyze my");
+    const isForex     = /\b(usd|eur|gbp|jpy|inr|cny|forex|currency|exchange rate|rupee|dollar|euro|pound)\b/.test(lower) && lower.includes("rate");
     setLoading(true);
-    setMessages(prev => [...prev, { role: "user", content: question }]);
+    setMessages(prev => [...prev, mkMsg("user", question)]);
     setInput("");
     // Navigate to chat on mobile
     setMobileTab("chat");
@@ -1003,33 +1042,34 @@ export default function App() {
     let endpoint   = "/ask";
     if (isCompare)        endpoint = "/compare/from-chat";
     else if (isPortfolio) endpoint = "/portfolio/from-chat";
+    else if (isForex)     endpoint = "/forex/from-chat";
 
     try {
       const res  = await fetch(`${API_URL}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, query: question, session_id: sid, time_range: timeRange }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMessages(prev => [...prev, { role: "assistant", content: data?.detail || data?.error || `Request failed (${res.status}).`, sources: [] }]);
+        setMessages(prev => [...prev, mkMsg("assistant", data?.detail || data?.error || `Request failed (${res.status}).`, { sources: [] })]);
       } else {
         if (data.session_id) setSessionId(data.session_id);
         if (isCompare && data.ticker_a) {
           setCompareA(data.ticker_a); setCompareB(data.ticker_b); setCompareData(data);
-          setMessages(prev => [...prev, { role: "assistant", content: data.verdict, sources: ["Yahoo Finance"] }]);
+          setMessages(prev => [...prev, mkMsg("assistant", data.verdict, { sources: ["Yahoo Finance"] })]);
         } else if (isPortfolio && data.tickers) {
           setPortfolio(data.tickers); setPortfolioData(data);
-          setMessages(prev => [...prev, { role: "assistant", content: data.summary, sources: ["Yahoo Finance"] }]);
+          setMessages(prev => [...prev, mkMsg("assistant", data.summary, { sources: ["Yahoo Finance"] })]);
         } else {
-          setMessages(prev => [...prev, { role: "assistant", content: data.answer || data.detail || "No response received.", sources: data.sources || [], responseTime: data.response_time }]);
+          setMessages(prev => [...prev, mkMsg("assistant", data.answer || data.detail || "No response received.", { sources: data.sources || [], responseTime: data.response_time })]);
         }
       }
     } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Connection error.", sources: [] }]);
+      setMessages(prev => [...prev, mkMsg("assistant", "Connection error.", { sources: [] })]);
     }
     setLoading(false);
   };
 
   const handleNewChat = async () => {
     await clearSession();
-    setMessages([{ role: "assistant", content: "New conversation started. What would you like to know?", sources: [] }]);
+    setMessages([mkMsg("assistant", "New conversation started. What would you like to know?", { sources: [] })]);
   };
 
   const handleSelectStock = (stock) => {
@@ -1179,7 +1219,7 @@ export default function App() {
           <button className="btn-ghost" style={{ fontSize: 12 }} onClick={handleNewChat}>+ New conversation</button>
         </div>
         <div className="chat-messages">
-          {messages.map((msg, i) => <ChatBubble key={i} msg={msg} />)}
+          {messages.map((msg) => <ChatBubble key={msg._id} msg={msg} />)}
           {loading && (
             <div className="chat-bubble-assistant">
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -1252,7 +1292,12 @@ export default function App() {
           ))}
         </div>
 
-        {compareData?.error && <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.neg }}>{compareData.error}</div>}
+        {compareData?.error && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.neg }}>{compareData.error}</span>
+            <button className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={() => runComparison()}>Retry</button>
+          </div>
+        )}
 
         {compareData && !compareData.error && compareData.ticker_a && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1291,8 +1336,11 @@ export default function App() {
       const t = holdingInput.ticker.trim().toUpperCase();
       const q = parseInt(holdingInput.quantity, 10);
       const p = parseFloat(holdingInput.avgPrice);
-      if (!t || !q || !p || q <= 0 || p <= 0) return;
-      if (holdings.some(h => h.ticker === t)) return; // no duplicates
+      if (!t)            return setHoldingError("Ticker is required.");
+      if (!q || q <= 0)  return setHoldingError("Quantity must be a positive number.");
+      if (!p || p <= 0)  return setHoldingError("Avg buy price must be a positive number.");
+      if (holdings.some(h => h.ticker === t)) return setHoldingError(`${t} already in holdings.`);
+      setHoldingError("");
       setHoldings(prev => [...prev, { ticker: t, quantity: q, avg_buy_price: p }]);
       setHoldingInput({ ticker: "", quantity: "", avgPrice: "" });
     };
@@ -1370,6 +1418,11 @@ export default function App() {
                   <Plus size={16} />
                 </button>
               </div>
+              {holdingError && (
+                <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: C.neg, marginTop: 8 }}>
+                  {holdingError}
+                </div>
+              )}
             </div>
 
             {/* Holdings table */}
@@ -1415,7 +1468,10 @@ export default function App() {
             )}
 
             {analysisResult?.error && (
-              <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.neg }}>{analysisResult.error}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.neg }}>{analysisResult.error}</span>
+                <button className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={runAnalysis}>Retry</button>
+              </div>
             )}
 
             {/* Analysis results */}
@@ -1546,7 +1602,12 @@ export default function App() {
             {portfolio.length === 0 && !portfolioData && (
               <EmptyState Icon={PieChart} title="No tickers added." subtitle="Add tickers above to begin quick portfolio analysis." />
             )}
-            {portfolioData?.error && <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.neg }}>{portfolioData.error}</div>}
+            {portfolioData?.error && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.neg }}>{portfolioData.error}</span>
+                <button className="btn-ghost" style={{ fontSize: 12, padding: "4px 10px" }} onClick={() => runPortfolioAnalysis()}>Retry</button>
+              </div>
+            )}
             {portfolioData && !portfolioData.error && (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 {portfolioData.summary && (
