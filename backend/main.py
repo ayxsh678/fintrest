@@ -51,7 +51,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:5173",
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"https://finance-ai-8qu9\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -705,6 +705,9 @@ def portfolio_autopsy(req: PortfolioAutopsyRequest):
         if trade.action.lower() == "buy":
             open_lots[t].append({"qty": trade.quantity, "price": trade.price, "date": trade.date})
         elif trade.action.lower() == "sell":
+            if not open_lots[t]:
+                logger.warning("SELL for %s on %s has no matching BUY — skipped", t, trade.date)
+                continue
             remaining = trade.quantity
             for lot in open_lots[t]:
                 if remaining <= 0:

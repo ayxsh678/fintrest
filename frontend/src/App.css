@@ -251,6 +251,7 @@
 }
 .chat-send-btn:hover  { filter: brightness(1.1); }
 .chat-send-btn:active { transform: scale(0.97); }
+.chat-send-btn:disabled { background: #2A2A32; color: #5A5868; cursor: not-allowed; filter: none; }
 
 /* ── Buttons ─────────────────────────────────────────── */
 .btn-gold {
@@ -309,7 +310,6 @@
   border: 1px solid #2A2A32;
   border-radius: 8px;
   padding: 10px 14px;
-  font-family: "DM Serif Display", serif;
   font-size: 14px;
   color: #F0EEE8;
   width: 100%;
@@ -633,12 +633,6 @@
   }
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-
 /* ── Custom scrollbars ───────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;
@@ -647,9 +641,9 @@
   background: #0F0F11;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2A2A32;
+  background: #3D3D4A;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3D3D4A;
+  background: #54536A;
 }

@@ -782,7 +782,7 @@ function AuthModal({ onSuccess }) {
     setLoading(false);
   };
 
-  const initial = email ? email[0].toUpperCase() : "F";
+  const initial = email?.length > 0 ? email[0].toUpperCase() : "F";
 
   return (
     <div className="auth-page">
@@ -898,6 +898,7 @@ export default function App() {
   const [newsData, setNewsData]       = useState({});
   const [newsLoading, setNewsLoading] = useState({});
   const fetchedNews                   = useRef(new Set());
+  const fetchedNewsOrder              = useRef([]);  // LRU eviction for fetchedNews
 
   // ── Effects ────────────────────────────────────────────
   useEffect(() => { if (!getSessionId()) startSession(); }, []);
@@ -917,9 +918,10 @@ export default function App() {
     })();
   }, []);
 
-  // Enrich watchlist prices
+  // Enrich watchlist prices — skip refresh when tab hidden
   useEffect(() => {
     const fetchPrices = async () => {
+      if (document.hidden) return;
       try {
         const res = await fetch(`${API_URL}/watchlist/enrich`, {
           method: "POST",
@@ -955,8 +957,8 @@ export default function App() {
     setSentimentLoading(prev => ({ ...prev, [ticker]: true }));
     try {
       const res  = await fetch(`${API_URL}/sentiment/${ticker}?company=${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      console.debug("[sentiment]", ticker, data);
       setSentiments(prev => ({ ...prev, [ticker]: normalizeSentimentPayload(data) }));
     } catch {
       fetchedSentiments.current.delete(ticker);
@@ -967,7 +969,13 @@ export default function App() {
 
   const fetchNews = useCallback(async (ticker, name = "") => {
     if (fetchedNews.current.has(ticker)) return;
+    // Evict oldest when over 50 unique tickers
+    if (fetchedNewsOrder.current.length >= 50) {
+      const evict = fetchedNewsOrder.current.shift();
+      fetchedNews.current.delete(evict);
+    }
     fetchedNews.current.add(ticker);
+    fetchedNewsOrder.current.push(ticker);
     setNewsLoading(prev => ({ ...prev, [ticker]: true }));
     try {
       const res  = await fetch(`${API_URL}/news/${ticker}?company=${encodeURIComponent(name)}`);
@@ -975,6 +983,7 @@ export default function App() {
       setNewsData(prev => ({ ...prev, [ticker]: data }));
     } catch {
       fetchedNews.current.delete(ticker);
+      fetchedNewsOrder.current = fetchedNewsOrder.current.filter(t => t !== ticker);
       setNewsData(prev => ({ ...prev, [ticker]: null }));
     }
     setNewsLoading(prev => ({ ...prev, [ticker]: false }));
@@ -986,9 +995,10 @@ export default function App() {
     fetchNews(selectedStock.ticker, selectedStock.name);
   }, [selectedStock.ticker, fetchSentiment, fetchNews]);
 
-  // Alert polling
+  // Alert polling — pauses when tab hidden to avoid wasted requests
   useEffect(() => {
     const poll = async () => {
+      if (document.hidden) return;
       const sid = getSessionId();
       if (!sid) return;
       try {
@@ -1022,7 +1032,7 @@ export default function App() {
     try {
       const sid = getSessionId() || await startSession();
       const res = await fetch(`${API_URL}/create_alert`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid, ticker, threshold, direction: alertDirection }) });
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setAlertTicker(""); setAlertThreshold(""); await fetchAlerts();
     } catch { setAlertError("Failed to create alert. Please try again."); }
     setAlertCreating(false);
@@ -1037,7 +1047,7 @@ export default function App() {
     } catch {}
   };
 
-  const addToPortfolio      = (t) => { const v = t.trim().toUpperCase(); if (v && !portfolio.includes(v)) setPortfolio(prev => [...prev, v]); };
+  const addToPortfolio      = (t) => { const v = t.trim().toUpperCase(); if (v) setPortfolio(prev => prev.includes(v) ? prev : [...prev, v]); };
   const removeFromPortfolio = (t) => setPortfolio(prev => prev.filter(x => x !== t));
 
   const runPortfolioAnalysis = async (over = null) => {
@@ -1079,7 +1089,7 @@ export default function App() {
     const isPortfolio = lower.includes("portfolio") || lower.includes("analyze my");
     const isForex     = /\b(usd|eur|gbp|jpy|inr|cny|forex|currency|exchange rate|rupee|dollar|euro|pound)\b/.test(lower) && lower.includes("rate");
     setLoading(true);
-    setMessages(prev => [...prev, mkMsg("user", question)]);
+    setMessages(prev => { const next = [...prev, mkMsg("user", question)]; return next.length > 100 ? next.slice(-100) : next; });
     setInput("");
     // Navigate to chat on mobile
     setMobileTab("chat");
@@ -1132,7 +1142,7 @@ export default function App() {
 
   // ── Sidebar ────────────────────────────────────────────
   const sidebarCollapsed = isTablet;
-  const userInitial = userState?.email ? userState.email[0].toUpperCase() : "?";
+  const userInitial = userState?.email?.length > 0 ? userState.email[0].toUpperCase() : "?";
 
   function Sidebar() {
     return (
@@ -1265,7 +1275,7 @@ export default function App() {
       <div className="chat-wrap">
         <div style={{ padding: "14px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 18, color: C.text }}>Fintrest Advisor</div>
-          <button className="btn-ghost" style={{ fontSize: 12 }} onClick={handleNewChat}>+ New conversation</button>
+          <button className="btn-ghost" style={{ fontSize: 12 }} onClick={handleNewChat} disabled={loading}>+ New conversation</button>
         </div>
         <div className="chat-messages">
           {messages.map((msg) => <ChatBubble key={msg._id} msg={msg} />)}
@@ -1284,7 +1294,7 @@ export default function App() {
           <input className="chat-input-field" value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage(input)}
             placeholder="Ask about any NSE/BSE stock or market trend…" />
-          <button className="chat-send-btn" onClick={() => sendMessage(input)}>
+          <button className="chat-send-btn" onClick={() => sendMessage(input)} disabled={loading}>
             <Send size={16} />
           </button>
         </div>
@@ -1314,7 +1324,7 @@ export default function App() {
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto 1fr", gap: 12, marginBottom: 16 }}>
           <input className="input-box" value={compareA} onChange={e => setCompareA(e.target.value.toUpperCase())} placeholder="TICKER A — e.g. RELIANCE.NS" />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Serif Display',serif", fontSize: 20, color: C.border, padding: isMobile ? "0" : "0 4px" }}>VS</div>
+          {!isMobile && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Serif Display',serif", fontSize: 20, color: C.border, padding: "0 4px" }}>VS</div>}
           <input className="input-box" value={compareB} onChange={e => setCompareB(e.target.value.toUpperCase())} placeholder="TICKER B — e.g. TCS.NS" />
         </div>
 
@@ -1413,7 +1423,7 @@ export default function App() {
       setAnalysisLoading(false);
     };
 
-    const sym = (ticker) => (ticker.endsWith(".NS") || ticker.endsWith(".BO")) ? "₹" : "$";
+    const sym = (ticker) => ticker && (ticker.endsWith(".NS") || ticker.endsWith(".BO")) ? "₹" : "$";
     const fmtVal = (v) => v >= 1e7 ? `₹${(v / 1e7).toFixed(2)}Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2)}L` : `₹${v.toLocaleString()}`;
 
     return (
@@ -1700,7 +1710,7 @@ export default function App() {
 
   // ── Alerts view ───────────────────────────────────────
   function AlertsView() {
-    useEffect(() => { fetchAlerts(); }, []);
+    useEffect(() => { fetchAlerts(); setAlertError(""); }, []);
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: isMobile ? 16 : 24 }}>
         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: C.text, marginBottom: 20 }}>Price Alerts</div>

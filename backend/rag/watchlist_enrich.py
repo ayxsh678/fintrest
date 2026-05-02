@@ -65,8 +65,7 @@ def _get_sparkline(ticker: str, points: int = 30) -> list[float] | None:
             closes.append(float(r["close"]))
         return closes if len(closes) >= 2 else None
     except (TypeError, ValueError, KeyError) as exc:
-        import logging
-        logging.getLogger(__name__).debug("sparkline fetch failed for %s: %s", ticker, exc)
+        logger.debug("sparkline fetch failed for %s: %s", ticker, exc)
         return None
 
 
@@ -77,10 +76,19 @@ def _fetch_one(ticker: str) -> dict:
     try:
         if kind == "india":
             raw = get_india_stock_data(ticker)
+            price      = _parse_price(raw)
+            change_5d  = _parse_change(raw)
         elif kind == "crypto":
             raw = get_crypto_data(get_coin_id(ticker.lower()))
+            price      = _parse_price(raw)
+            change_5d  = _parse_change(raw)
         else:
+            # get_stock_data returns a dict, not a formatted string
             raw = get_stock_data(ticker)
+            if raw.get("error"):
+                return {"ticker": ticker, "type": kind, "error": raw["error"]}
+            price     = raw.get("price")
+            change_5d = raw.get("five_day_change")
     except Exception as e:  # noqa: BLE001
         logger.warning("enrich price fetch failed for %s: %s", ticker, e)
         return {"ticker": ticker, "type": kind, "error": str(e)}
@@ -102,8 +110,8 @@ def _fetch_one(ticker: str) -> dict:
     return {
         "ticker": ticker,
         "type": kind,
-        "price": _parse_price(raw),
-        "change_5d_pct": _parse_change(raw),
+        "price": price,
+        "change_5d_pct": change_5d,
         "sentiment_score": sentiment.get("score"),
         "sentiment_label": sentiment.get("label"),
         "sparkline": sparkline,

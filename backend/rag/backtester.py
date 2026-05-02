@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from typing import Dict
 import logging
 
-from rag.sentiment import get_sentiment
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +41,21 @@ class SentimentBacktester:
 
             logger.info("Running backtest with %d trading days...", len(close_prices))
 
-            # Fetch sentiment once — cached inside get_sentiment; calling it per-day is wasteful
-            sent_result = get_sentiment(ticker)
-            sentiment_score = sent_result.get("score", 50.0)
+            # Build a daily momentum-based sentiment proxy using 14-day RSI.
+            # Real historical sentiment data is unavailable; RSI (0-100) captures
+            # overbought/oversold state and correlates with market sentiment shifts.
+            def _compute_rsi(prices: "pd.Series", period: int = 14) -> "pd.Series":
+                delta = prices.diff()
+                gain  = delta.clip(lower=0).rolling(period).mean()
+                loss  = (-delta.clip(upper=0)).rolling(period).mean()
+                rs    = gain / loss.replace(0, float("nan"))
+                return (100 - (100 / (1 + rs))).fillna(50.0)
+
+            rsi_series = _compute_rsi(close_prices)
 
             for i in range(20, len(close_prices)):
-                current_date = close_prices.index[i].date()
+                current_date   = close_prices.index[i].date()
+                sentiment_score = float(rsi_series.iloc[i])
 
                 # Ultra-safe price extraction
                 price_value = close_prices.iloc[i]
@@ -95,7 +103,7 @@ class SentimentBacktester:
                 "number_of_trades": len(trades) // 2,
                 "trades": trades[-8:],
                 "hold_days": self.hold_days,
-                "note": "Using recent sentiment for every day",
+                "note": "Signal: 14-day RSI used as momentum-sentiment proxy (varies per day)",
                 "message": f"Backtest completed for {ticker}"
             }
 
