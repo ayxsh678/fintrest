@@ -166,62 +166,23 @@ def get_stock_data(ticker: str) -> dict:
 
 # ── Context builder (used by /ask) ─────────────────────
 
-_COMPANY_ALIAS: dict[str, str] = {
-    # NSE blue-chips
-    "reliance": "RELIANCE.NS", "ril": "RELIANCE.NS",
-    "tcs": "TCS.NS", "tata consultancy": "TCS.NS",
-    "infosys": "INFY.NS", "infy": "INFY.NS",
-    "wipro": "WIPRO.NS",
-    "hdfc bank": "HDFCBANK.NS", "hdfcbank": "HDFCBANK.NS", "hdfc": "HDFCBANK.NS",
-    "icici bank": "ICICIBANK.NS", "icici": "ICICIBANK.NS",
-    "sbi": "SBIN.NS", "state bank": "SBIN.NS",
-    "kotak": "KOTAKBANK.NS", "kotak bank": "KOTAKBANK.NS",
-    "axis bank": "AXISBANK.NS", "axis": "AXISBANK.NS",
-    "bajaj finance": "BAJFINANCE.NS", "bajaj": "BAJFINANCE.NS",
-    "maruti": "MARUTI.NS", "maruti suzuki": "MARUTI.NS",
-    "tata motors": "TATAMOTORS.NS", "tatamotors": "TATAMOTORS.NS",
-    "tata steel": "TATASTEEL.NS",
-    "hindalco": "HINDALCO.NS",
-    "adani": "ADANIENT.NS", "adani enterprises": "ADANIENT.NS",
-    "adani ports": "ADANIPORTS.NS",
-    "adani green": "ADANIGREEN.NS",
-    "ongc": "ONGC.NS",
-    "ntpc": "NTPC.NS",
-    "power grid": "POWERGRID.NS",
-    "sun pharma": "SUNPHARMA.NS", "sun pharmaceutical": "SUNPHARMA.NS",
-    "dr reddy": "DRREDDY.NS", "drl": "DRREDDY.NS",
-    "cipla": "CIPLA.NS",
-    "asian paints": "ASIANPAINT.NS",
-    "nestle": "NESTLEIND.NS",
-    "hindustan unilever": "HINDUNILVR.NS", "hul": "HINDUNILVR.NS",
-    "itc": "ITC.NS",
-    "ultratech": "ULTRACEMCO.NS", "ultratech cement": "ULTRACEMCO.NS",
-    "l&t": "LT.NS", "larsen": "LT.NS",
-    "m&m": "M&M.NS", "mahindra": "M&M.NS",
-    "hero motocorp": "HEROMOTOCO.NS", "hero": "HEROMOTOCO.NS",
-    "bajaj auto": "BAJAJ-AUTO.NS",
-    "tech mahindra": "TECHM.NS",
-    "hcl tech": "HCLTECH.NS", "hcl": "HCLTECH.NS",
-    # US / global
-    "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL",
-    "alphabet": "GOOGL", "amazon": "AMZN", "meta": "META",
-    "nvidia": "NVDA", "tesla": "TSLA", "netflix": "NFLX",
-    # Crypto (common names)
-    "bitcoin": "BTC-USD", "btc": "BTC-USD",
-    "ethereum": "ETH-USD", "eth": "ETH-USD",
-    "solana": "SOL-USD", "sol": "SOL-USD",
-}
-
 def _extract_tickers(question: str) -> list[str]:
-    """Extract tickers from question via alias map + uppercase regex fallback."""
+    """Extract tickers from question via centralized alias maps + uppercase regex fallback."""
+    # Import here to avoid circular imports; india_stocks does not import retriever
+    from rag.india_stocks import INDIA_COMPANY_MAP
+
+    # Merge: INDIA_COMPANY_MAP (comprehensive India) + COMPANY_MAP (India + US/crypto)
+    # COMPANY_MAP entries win on conflict (US/crypto overrides where keys overlap)
+    alias_map = {**INDIA_COMPANY_MAP, **COMPANY_MAP}
+
     q_lower = question.lower()
     found: list[str] = []
     seen: set[str] = set()
 
     # Longest-match first to avoid "hdfc" matching before "hdfc bank"
-    for alias in sorted(_COMPANY_ALIAS, key=len, reverse=True):
+    for alias in sorted(alias_map, key=len, reverse=True):
         if re.search(r'\b' + re.escape(alias) + r'\b', q_lower):
-            ticker = _COMPANY_ALIAS[alias]
+            ticker = alias_map[alias]
             if ticker not in seen:
                 found.append(ticker)
                 seen.add(ticker)
@@ -265,8 +226,11 @@ def build_context(question: str, time_range: str = "7d") -> str:
 
 # ── Aliases & stubs for backward compatibility ─────────
 
-# Constants expected by portfolio.py and comparison.py
+# Constants expected by portfolio.py and comparison.py.
+# India entries are a subset kept for backward compat; INDIA_COMPANY_MAP (india_stocks.py)
+# is the authoritative India source. US/crypto entries live here only.
 COMPANY_MAP: dict[str, str] = {
+    # India (subset — full list in INDIA_COMPANY_MAP)
     "reliance": "RELIANCE.NS", "tcs": "TCS.NS", "infosys": "INFY.NS",
     "wipro": "WIPRO.NS", "hdfc": "HDFCBANK.NS", "icici": "ICICIBANK.NS",
     "sbi": "SBIN.NS", "bajaj": "BAJFINANCE.NS", "adani": "ADANIENT.NS",
@@ -276,6 +240,14 @@ COMPANY_MAP: dict[str, str] = {
     "tatasteel": "TATASTEEL.NS", "tata steel": "TATASTEEL.NS",
     "sunpharma": "SUNPHARMA.NS", "sun pharma": "SUNPHARMA.NS",
     "ongc": "ONGC.NS", "ntpc": "NTPC.NS", "powergrid": "POWERGRID.NS",
+    # US / global
+    "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL",
+    "alphabet": "GOOGL", "amazon": "AMZN", "meta": "META",
+    "nvidia": "NVDA", "tesla": "TSLA", "netflix": "NFLX",
+    # Crypto
+    "bitcoin": "BTC-USD", "btc": "BTC-USD",
+    "ethereum": "ETH-USD", "eth": "ETH-USD",
+    "solana": "SOL-USD", "sol": "SOL-USD",
 }
 
 KNOWN_TICKERS: list[str] = list(COMPANY_MAP.values())
