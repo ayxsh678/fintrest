@@ -235,7 +235,7 @@ def format_as_stock_data(ticker: str, quote: dict, symbol: str = "$",
     rel_vol = quote.get("rel_vol")
     name    = quote.get("long_name") or ticker
 
-    fmt_mktcap = f"{symbol}{int(mkt_cap):,}" if mkt_cap is not None else "N/A"
+    fmt_mktcap = f"{symbol}{int(mkt_cap):,}" if mkt_cap is not None and mkt_cap == mkt_cap else "N/A"
     fmt_pct    = f"{pct:.2f}%" if pct is not None else "N/A"
     fmt_relvol = f"{rel_vol}x" if rel_vol is not None else "—"
     header     = f"Stock: {name} ({ticker}){(' — ' + label) if label else ''}"

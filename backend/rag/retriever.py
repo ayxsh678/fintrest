@@ -1,7 +1,11 @@
+import logging
 import os
+import re
 import requests
 from datetime import datetime, timedelta
 import yfinance as yf
+
+logger = logging.getLogger(__name__)
 
 FINNHUB_KEY = os.getenv("FINNHUB_API_KEY")
 NEWSAPI_KEY  = os.getenv("NEWS_API_KEY")
@@ -51,7 +55,7 @@ def get_news_for_ticker(
                         ).strftime("%Y-%m-%d")
                     })
         except Exception as e:
-            print(f"[Finnhub] error for {ticker}: {e}")
+            logger.warning("[Finnhub] error for %s: %s", ticker, e)
 
     # ── Source 2: NewsAPI fallback ─────────────────────
     if not articles and NEWSAPI_KEY:
@@ -79,7 +83,7 @@ def get_news_for_ticker(
                     "published_at": (item.get("publishedAt", "") or "")[:10]
                 })
         except Exception as e:
-            print(f"[NewsAPI] error for {ticker}: {e}")
+            logger.warning("[NewsAPI] error for %s: %s", ticker, e)
 
     # ── Filter: keep only financially relevant articles ──
     FINANCIAL_SIGNALS = [
@@ -156,11 +160,81 @@ def get_stock_data(ticker: str) -> dict:
             "rel_volume":      rel_vol,
         }
     except Exception as e:
-        print(f"[yfinance] error for {ticker}: {e}")
+        logger.warning("[yfinance] error for %s: %s", ticker, e)
         return {"ticker": ticker, "error": "Stock data unavailable"}
 
 
 # ── Context builder (used by /ask) ─────────────────────
+
+_COMPANY_ALIAS: dict[str, str] = {
+    # NSE blue-chips
+    "reliance": "RELIANCE.NS", "ril": "RELIANCE.NS",
+    "tcs": "TCS.NS", "tata consultancy": "TCS.NS",
+    "infosys": "INFY.NS", "infy": "INFY.NS",
+    "wipro": "WIPRO.NS",
+    "hdfc bank": "HDFCBANK.NS", "hdfcbank": "HDFCBANK.NS", "hdfc": "HDFCBANK.NS",
+    "icici bank": "ICICIBANK.NS", "icici": "ICICIBANK.NS",
+    "sbi": "SBIN.NS", "state bank": "SBIN.NS",
+    "kotak": "KOTAKBANK.NS", "kotak bank": "KOTAKBANK.NS",
+    "axis bank": "AXISBANK.NS", "axis": "AXISBANK.NS",
+    "bajaj finance": "BAJFINANCE.NS", "bajaj": "BAJFINANCE.NS",
+    "maruti": "MARUTI.NS", "maruti suzuki": "MARUTI.NS",
+    "tata motors": "TATAMOTORS.NS", "tatamotors": "TATAMOTORS.NS",
+    "tata steel": "TATASTEEL.NS",
+    "hindalco": "HINDALCO.NS",
+    "adani": "ADANIENT.NS", "adani enterprises": "ADANIENT.NS",
+    "adani ports": "ADANIPORTS.NS",
+    "adani green": "ADANIGREEN.NS",
+    "ongc": "ONGC.NS",
+    "ntpc": "NTPC.NS",
+    "power grid": "POWERGRID.NS",
+    "sun pharma": "SUNPHARMA.NS", "sun pharmaceutical": "SUNPHARMA.NS",
+    "dr reddy": "DRREDDY.NS", "drl": "DRREDDY.NS",
+    "cipla": "CIPLA.NS",
+    "asian paints": "ASIANPAINT.NS",
+    "nestle": "NESTLEIND.NS",
+    "hindustan unilever": "HINDUNILVR.NS", "hul": "HINDUNILVR.NS",
+    "itc": "ITC.NS",
+    "ultratech": "ULTRACEMCO.NS", "ultratech cement": "ULTRACEMCO.NS",
+    "l&t": "LT.NS", "larsen": "LT.NS",
+    "m&m": "M&M.NS", "mahindra": "M&M.NS",
+    "hero motocorp": "HEROMOTOCO.NS", "hero": "HEROMOTOCO.NS",
+    "bajaj auto": "BAJAJ-AUTO.NS",
+    "tech mahindra": "TECHM.NS",
+    "hcl tech": "HCLTECH.NS", "hcl": "HCLTECH.NS",
+    # US / global
+    "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL",
+    "alphabet": "GOOGL", "amazon": "AMZN", "meta": "META",
+    "nvidia": "NVDA", "tesla": "TSLA", "netflix": "NFLX",
+    # Crypto (common names)
+    "bitcoin": "BTC-USD", "btc": "BTC-USD",
+    "ethereum": "ETH-USD", "eth": "ETH-USD",
+    "solana": "SOL-USD", "sol": "SOL-USD",
+}
+
+def _extract_tickers(question: str) -> list[str]:
+    """Extract tickers from question via alias map + uppercase regex fallback."""
+    q_lower = question.lower()
+    found: list[str] = []
+    seen: set[str] = set()
+
+    # Longest-match first to avoid "hdfc" matching before "hdfc bank"
+    for alias in sorted(_COMPANY_ALIAS, key=len, reverse=True):
+        if re.search(r'\b' + re.escape(alias) + r'\b', q_lower):
+            ticker = _COMPANY_ALIAS[alias]
+            if ticker not in seen:
+                found.append(ticker)
+                seen.add(ticker)
+
+    # Fallback: explicit uppercase tickers in the question (e.g. "RELIANCE.NS")
+    # Skip if it's a prefix of an already-resolved ticker (e.g. "HDFC" when HDFCBANK.NS found)
+    for t in re.findall(r'\b[A-Z]{2,10}(?:[.\-][A-Z]{2,3})?\b', question):
+        if t not in seen and not any(s.startswith(t) for s in seen):
+            found.append(t)
+            seen.add(t)
+
+    return found[:3]
+
 
 def build_context(question: str, time_range: str = "7d") -> str:
     """Assembles RAG context string for the /ask endpoint."""
@@ -169,15 +243,15 @@ def build_context(question: str, time_range: str = "7d") -> str:
 
     context_parts = []
 
-    import re
-    tickers = re.findall(r'\b[A-Z]{2,5}(?:\.[A-Z]{2})?\b', question)
+    tickers = _extract_tickers(question)
 
     for ticker in tickers[:2]:
         stock = get_stock_data(ticker)
         if "error" not in stock:
+            change = stock.get('change') or 0
             context_parts.append(
                 f"Stock: {ticker} | Price: {stock.get('price')} | "
-                f"Change: {stock.get('change', 0):.2f}% | "
+                f"Change: {change:.2f}% | "
                 f"Market: {stock.get('market', 'Unknown')}"
             )
 
@@ -240,7 +314,7 @@ def get_earnings_data(ticker: str) -> dict:
             "forward_pe":          info.get("forwardPE"),
         }
     except Exception as e:
-        print(f"[get_earnings_data] error for {ticker}: {e}")
+        logger.warning("[get_earnings_data] error for %s: %s", ticker, e)
         return {"ticker": ticker, "error": "Earnings data unavailable"}
 
 
@@ -285,5 +359,5 @@ def get_ohlc_yf(ticker: str, days: int = 180) -> dict:
         return {"ticker": ticker, "ok": True, "rows": rows, "source": "Yahoo Finance"}
 
     except Exception as e:
-        print(f"[get_ohlc_yf] error for {ticker}: {e}")
+        logger.warning("[get_ohlc_yf] error for %s: %s", ticker, e)
         return {"ticker": ticker, "ok": False, "rows": [], "source": None}
