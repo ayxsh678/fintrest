@@ -19,7 +19,9 @@ _BATCH_TIMEOUT_S = 20.0
 
 
 def _parse_price(raw: str) -> float | None:
-    m = re.search(r"Current Price:\s*[₹$]?([\d,]+\.?\d*)", raw)
+    # Matches "Current Price: ₹1,234.56" (India/US stocks) or
+    # "Price (USD): $12,345.67" (crypto)
+    m = re.search(r"(?:Current Price|Price \(USD\)):\s*[₹$]?([\d,]+\.?\d*)", raw)
     if not m:
         return None
     try:
@@ -29,7 +31,8 @@ def _parse_price(raw: str) -> float | None:
 
 
 def _parse_change(raw: str) -> float | None:
-    m = re.search(r"5-Day Change:\s*(-?[\d.]+)%", raw)
+    # Matches "5-Day Change: 1.23%" (stocks) or "7d Change: 2.34%" (crypto)
+    m = re.search(r"(?:5-Day Change|7d Change):\s*(-?[\d.]+)%", raw)
     if not m:
         return None
     try:
@@ -55,7 +58,14 @@ def _get_sparkline(ticker: str, points: int = 30) -> list[float] | None:
     frontend can fall back to its own placeholder rather than crashing.
     """
     try:
-        rows = eodhd_get_ohlc(ticker, days=points + 5) or get_ohlc_yf(ticker, days=points + 5)
+        rows = eodhd_get_ohlc(ticker, days=points + 5)
+        if not rows:
+            # get_ohlc_yf returns a dict {"ok": bool, "rows": [...]}
+            yf_result = get_ohlc_yf(ticker, days=points + 5)
+            if isinstance(yf_result, dict):
+                rows = yf_result.get("rows") or []
+            else:
+                rows = yf_result or []
         if not rows:
             return None
         closes: list[float] = []

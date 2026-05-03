@@ -773,8 +773,17 @@ def portfolio_autopsy(req: PortfolioAutopsyRequest):
 
 def get_financial_news_for_forex(pair: str) -> str:
     """Fetch news relevant to a forex pair for LLM context."""
-    query = pair.replace("/", " ")
-    return get_financial_news(query, days=7)
+    # Use individual currency codes as search queries to get relevant articles
+    base, quote = pair.split("/") if "/" in pair else (pair, "")
+    articles = get_financial_news(base, days=7)
+    if not articles and quote:
+        articles = get_financial_news(quote, days=7)
+    if not articles:
+        return "No recent forex news available."
+    return "\n".join(
+        f"- {a.get('title', '')} ({a.get('source', '')})"
+        for a in articles[:5]
+    )
 
 
 # ── Entry point ────────────────────────────────────────

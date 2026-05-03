@@ -7,7 +7,7 @@ import {
 import Aperture from "./Aperture";
 import "./App.css";
 
-const API_URL = process.env.REACT_APP_API_URL || "https://fintrest-go.onrender.com";
+const API_URL = process.env.REACT_APP_API_URL || "https://quantiq-go.onrender.com";
 
 // ── Color tokens ────────────────────────────────────────
 const C = {
@@ -34,8 +34,8 @@ const setUser     = (u) => localStorage.setItem("fintrest_user", JSON.stringify(
 const removeUser  = () => localStorage.removeItem("fintrest_user");
 
 // ── Session helpers ──────────────────────────────────────
-const getSessionId    = () => localStorage.getItem("fintrest_session_id");
-const setSessionId    = (id) => localStorage.setItem("fintrest_session_id", id);
+const getSessionId    = () => { const id = localStorage.getItem("fintrest_session_id"); return id && id !== "undefined" ? id : null; };
+const setSessionId    = (id) => { if (id && id !== "undefined") localStorage.setItem("fintrest_session_id", id); };
 const removeSessionId = () => localStorage.removeItem("fintrest_session_id");
 const startSession    = async () => {
   try {
@@ -625,7 +625,17 @@ function TradingViewChart({ ticker, height = 220, days = 180 }) {
         const payload = await res.json();
         if (cancelled) return;
         if (!payload.ok || !Array.isArray(payload.rows) || !payload.rows.length) {
-          setState({ status: "error", reason: "No chart data available" }); return;
+          // Backend may be cold-starting — retry once after 4s before showing error
+          await new Promise(r => setTimeout(r, 4000));
+          if (cancelled) return;
+          const res2 = await fetch(`${API_URL}/chart/${encodeURIComponent(ticker)}?days=${days}`);
+          if (!res2.ok) { setState({ status: "error", reason: "No chart data available" }); return; }
+          const payload2 = await res2.json();
+          if (cancelled) return;
+          if (!payload2.ok || !Array.isArray(payload2.rows) || !payload2.rows.length) {
+            setState({ status: "error", reason: "No chart data available" }); return;
+          }
+          Object.assign(payload, payload2);
         }
         const el = containerRef.current;
         if (!el) return;
@@ -775,10 +785,11 @@ function AuthModal({ onSuccess }) {
     setLoading(true); setError("");
     try {
       const res  = await fetch(`${API_URL}/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "Something went wrong"); setLoading(false); return; }
+      let data = {};
+      try { data = await res.json(); } catch {}
+      if (!res.ok) { setError(data.error || `Server error (${res.status})`); setLoading(false); return; }
       setToken(data.token); setUser({ email: data.email, user_id: data.user_id }); onSuccess();
-    } catch { setError("Connection error"); }
+    } catch { setError("Cannot reach server — check your connection"); }
     setLoading(false);
   };
 
@@ -995,6 +1006,17 @@ export default function App() {
     fetchNews(selectedStock.ticker, selectedStock.name);
   }, [selectedStock.ticker, fetchSentiment, fetchNews]);
 
+  // ── Handlers ───────────────────────────────────────────
+  const fetchAlerts = useCallback(async () => {
+    const sid = getSessionId();
+    if (!sid) return;
+    try {
+      const res  = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
+      const data = await res.json();
+      setAlerts(Array.isArray(data) ? data : []);
+    } catch {}
+  }, []);
+
   // Alert polling — pauses when tab hidden to avoid wasted requests
   useEffect(() => {
     const poll = async () => {
@@ -1011,18 +1033,7 @@ export default function App() {
     poll();
     const t = setInterval(poll, 300_000);
     return () => clearInterval(t);
-  }, []);
-
-  // ── Handlers ───────────────────────────────────────────
-  const fetchAlerts = async () => {
-    const sid = getSessionId();
-    if (!sid) return;
-    try {
-      const res  = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
-      const data = await res.json();
-      setAlerts(Array.isArray(data) ? data : []);
-    } catch {}
-  };
+  }, [fetchAlerts]);
 
   const createAlert = async () => {
     const ticker    = alertTicker.toUpperCase().trim();
@@ -1073,7 +1084,7 @@ export default function App() {
       const sid  = getSessionId() || await startSession();
       const res  = await fetch(`${API_URL}/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticker_a: ta, ticker_b: tb, session_id: sid }) });
       const raw = await res.json();
-      console.debug("[compare]", ta, tb, raw);
+      if (process.env.NODE_ENV !== "production") console.debug("[compare]", ta, tb, raw);
       const data = normalizeComparePayload(raw, ta, tb);
       if (data.session_id) setSessionId(data.session_id);
       setCompareData(data);
@@ -1710,7 +1721,7 @@ export default function App() {
 
   // ── Alerts view ───────────────────────────────────────
   function AlertsView() {
-    useEffect(() => { fetchAlerts(); setAlertError(""); }, []);
+    useEffect(() => { fetchAlerts(); setAlertError(""); }, [fetchAlerts]);
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: isMobile ? 16 : 24 }}>
         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: C.text, marginBottom: 20 }}>Price Alerts</div>
@@ -1826,13 +1837,13 @@ export default function App() {
       {/* Triggered notifications */}
       {triggeredNotifs.length > 0 && (
         <div style={{ position: "fixed", top: 16, right: 16, zIndex: 999, display: "flex", flexDirection: "column", gap: 8, maxWidth: 320 }}>
-          {triggeredNotifs.map((n, i) => (
-            <div key={i} className="card fade-up" style={{ borderColor: C.accent, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          {triggeredNotifs.map((n) => (
+            <div key={n.id || `${n.ticker}-${n.threshold}`} className="card fade-up" style={{ borderColor: C.accent, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
               <div>
                 <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 12, color: C.accent, marginBottom: 2 }}>{n.ticker}</div>
                 <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: C.textSec }}>Alert triggered at {n.threshold}</div>
               </div>
-              <button onClick={() => setTriggeredNotifs(prev => prev.filter((_, j) => j !== i))} style={{ background: "none", border: "none", color: C.textTer, cursor: "pointer", padding: 2 }}>
+              <button onClick={() => setTriggeredNotifs(prev => prev.filter(x => (x.id || `${x.ticker}-${x.threshold}`) !== (n.id || `${n.ticker}-${n.threshold}`)))} style={{ background: "none", border: "none", color: C.textTer, cursor: "pointer", padding: 2 }}>
                 <X size={14} />
               </button>
             </div>

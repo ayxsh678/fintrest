@@ -12,6 +12,15 @@ from rag.eodhd import get_avg_volume as eodhd_get_avg_volume
 india_cache = TTLCache(maxsize=100, ttl=300)
 india_lock  = Lock()
 
+
+def _safe_num(v, default: float = 0.0) -> float:
+    """Return v as float, or default if v is None/NaN/non-numeric."""
+    try:
+        f = float(v)
+        return f if f == f else default  # NaN check
+    except (TypeError, ValueError):
+        return default
+
 # ── NSE/BSE ticker map ─────────────────────────────────
 INDIA_COMPANY_MAP = {
     "reliance": "RELIANCE.NS",
@@ -152,7 +161,7 @@ def get_india_stock_data(ticker: str, as_dict: bool = False):
                 f"52W High: {symbol}{info.get('fiftyTwoWeekHigh', 'N/A')}\n"
                 f"52W Low: {symbol}{info.get('fiftyTwoWeekLow', 'N/A')}\n"
                 f"P/E Ratio: {info.get('trailingPE', 'N/A')}\n"
-                f"Market Cap: {symbol}{int(info.get('marketCap') or 0):,}\n"
+                f"Market Cap: {symbol}{int(_safe_num(info.get('marketCap'))):,}\n"
                 f"EPS: {info.get('trailingEps', 'N/A')}\n"
                 f"5-Day Change: {change_pct:.2f}%\n"
                 f"Latest Volume: {int(latest_volume):,}\n"

@@ -1,7 +1,11 @@
+import logging
 import os
+import re
 import requests
 from datetime import datetime, timedelta
 import yfinance as yf
+
+logger = logging.getLogger(__name__)
 
 FINNHUB_KEY = os.getenv("FINNHUB_API_KEY")
 NEWSAPI_KEY  = os.getenv("NEWS_API_KEY")
@@ -51,7 +55,7 @@ def get_news_for_ticker(
                         ).strftime("%Y-%m-%d")
                     })
         except Exception as e:
-            print(f"[Finnhub] error for {ticker}: {e}")
+            logger.warning("[Finnhub] error for %s: %s", ticker, e)
 
     # ── Source 2: NewsAPI fallback ─────────────────────
     if not articles and NEWSAPI_KEY:
@@ -79,7 +83,7 @@ def get_news_for_ticker(
                     "published_at": (item.get("publishedAt", "") or "")[:10]
                 })
         except Exception as e:
-            print(f"[NewsAPI] error for {ticker}: {e}")
+            logger.warning("[NewsAPI] error for %s: %s", ticker, e)
 
     # ── Filter: keep only financially relevant articles ──
     FINANCIAL_SIGNALS = [
@@ -156,11 +160,42 @@ def get_stock_data(ticker: str) -> dict:
             "rel_volume":      rel_vol,
         }
     except Exception as e:
-        print(f"[yfinance] error for {ticker}: {e}")
+        logger.warning("[yfinance] error for %s: %s", ticker, e)
         return {"ticker": ticker, "error": "Stock data unavailable"}
 
 
 # ── Context builder (used by /ask) ─────────────────────
+
+def _extract_tickers(question: str) -> list[str]:
+    """Extract tickers from question via centralized alias maps + uppercase regex fallback."""
+    # Import here to avoid circular imports; india_stocks does not import retriever
+    from rag.india_stocks import INDIA_COMPANY_MAP
+
+    # Merge: INDIA_COMPANY_MAP (comprehensive India) + COMPANY_MAP (India + US/crypto)
+    # COMPANY_MAP entries win on conflict (US/crypto overrides where keys overlap)
+    alias_map = {**INDIA_COMPANY_MAP, **COMPANY_MAP}
+
+    q_lower = question.lower()
+    found: list[str] = []
+    seen: set[str] = set()
+
+    # Longest-match first to avoid "hdfc" matching before "hdfc bank"
+    for alias in sorted(alias_map, key=len, reverse=True):
+        if re.search(r'\b' + re.escape(alias) + r'\b', q_lower):
+            ticker = alias_map[alias]
+            if ticker not in seen:
+                found.append(ticker)
+                seen.add(ticker)
+
+    # Fallback: explicit uppercase tickers in the question (e.g. "RELIANCE.NS")
+    # Skip if it's a prefix of an already-resolved ticker (e.g. "HDFC" when HDFCBANK.NS found)
+    for t in re.findall(r'\b[A-Z]{2,10}(?:[.\-][A-Z]{2,3})?\b', question):
+        if t not in seen and not any(s.startswith(t) for s in seen):
+            found.append(t)
+            seen.add(t)
+
+    return found[:3]
+
 
 def build_context(question: str, time_range: str = "7d") -> str:
     """Assembles RAG context string for the /ask endpoint."""
@@ -169,15 +204,15 @@ def build_context(question: str, time_range: str = "7d") -> str:
 
     context_parts = []
 
-    import re
-    tickers = re.findall(r'\b[A-Z]{2,5}(?:\.[A-Z]{2})?\b', question)
+    tickers = _extract_tickers(question)
 
     for ticker in tickers[:2]:
         stock = get_stock_data(ticker)
         if "error" not in stock:
+            change = stock.get('change') or 0
             context_parts.append(
                 f"Stock: {ticker} | Price: {stock.get('price')} | "
-                f"Change: {stock.get('change', 0):.2f}% | "
+                f"Change: {change:.2f}% | "
                 f"Market: {stock.get('market', 'Unknown')}"
             )
 
@@ -191,8 +226,11 @@ def build_context(question: str, time_range: str = "7d") -> str:
 
 # ── Aliases & stubs for backward compatibility ─────────
 
-# Constants expected by portfolio.py and comparison.py
+# Constants expected by portfolio.py and comparison.py.
+# India entries are a subset kept for backward compat; INDIA_COMPANY_MAP (india_stocks.py)
+# is the authoritative India source. US/crypto entries live here only.
 COMPANY_MAP: dict[str, str] = {
+    # India (subset — full list in INDIA_COMPANY_MAP)
     "reliance": "RELIANCE.NS", "tcs": "TCS.NS", "infosys": "INFY.NS",
     "wipro": "WIPRO.NS", "hdfc": "HDFCBANK.NS", "icici": "ICICIBANK.NS",
     "sbi": "SBIN.NS", "bajaj": "BAJFINANCE.NS", "adani": "ADANIENT.NS",
@@ -202,6 +240,14 @@ COMPANY_MAP: dict[str, str] = {
     "tatasteel": "TATASTEEL.NS", "tata steel": "TATASTEEL.NS",
     "sunpharma": "SUNPHARMA.NS", "sun pharma": "SUNPHARMA.NS",
     "ongc": "ONGC.NS", "ntpc": "NTPC.NS", "powergrid": "POWERGRID.NS",
+    # US / global
+    "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL",
+    "alphabet": "GOOGL", "amazon": "AMZN", "meta": "META",
+    "nvidia": "NVDA", "tesla": "TSLA", "netflix": "NFLX",
+    # Crypto
+    "bitcoin": "BTC-USD", "btc": "BTC-USD",
+    "ethereum": "ETH-USD", "eth": "ETH-USD",
+    "solana": "SOL-USD", "sol": "SOL-USD",
 }
 
 KNOWN_TICKERS: list[str] = list(COMPANY_MAP.values())
@@ -240,7 +286,7 @@ def get_earnings_data(ticker: str) -> dict:
             "forward_pe":          info.get("forwardPE"),
         }
     except Exception as e:
-        print(f"[get_earnings_data] error for {ticker}: {e}")
+        logger.warning("[get_earnings_data] error for %s: %s", ticker, e)
         return {"ticker": ticker, "error": "Earnings data unavailable"}
 
 
@@ -285,5 +331,5 @@ def get_ohlc_yf(ticker: str, days: int = 180) -> dict:
         return {"ticker": ticker, "ok": True, "rows": rows, "source": "Yahoo Finance"}
 
     except Exception as e:
-        print(f"[get_ohlc_yf] error for {ticker}: {e}")
+        logger.warning("[get_ohlc_yf] error for %s: %s", ticker, e)
         return {"ticker": ticker, "ok": False, "rows": [], "source": None}

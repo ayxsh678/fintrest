@@ -1,6 +1,4 @@
 
-Copy
-
 services:
   - type: web
     name: fintrest-python
@@ -21,7 +19,7 @@ services:
         sync: false
       - key: ALLOWED_ORIGIN
         sync: false
- 
+
   - type: web
     name: fintrest-go
     runtime: go
@@ -35,4 +33,7 @@ services:
         sync: false
       - key: PORT
         value: "8000"
- 
+      - key: JWT_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
