@@ -7,6 +7,7 @@ get_india_stock_data and the rest to get_stock_data.
 import concurrent.futures
 import logging
 import re
+import math
 
 from rag.retriever import get_stock_data, get_ohlc_yf
 from rag.india_stocks import get_india_stock_data
@@ -16,6 +17,16 @@ from rag.eodhd import get_ohlc as eodhd_get_ohlc
 
 logger = logging.getLogger(__name__)
 _BATCH_TIMEOUT_S = 20.0
+
+
+def _safe_json_num(v: float | int | None) -> float | None:
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
 
 
 def _parse_price(raw: str) -> float | None:
@@ -72,7 +83,12 @@ def _get_sparkline(ticker: str, points: int = 30) -> list[float] | None:
         for r in rows[-points:]:
             if not isinstance(r, dict) or "close" not in r:
                 continue  # skip malformed rows rather than raising
-            closes.append(float(r["close"]))
+            try:
+                c = float(r["close"])
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(c):
+                closes.append(c)
         return closes if len(closes) >= 2 else None
     except (TypeError, ValueError, KeyError) as exc:
         logger.debug("sparkline fetch failed for %s: %s", ticker, exc)
@@ -85,9 +101,11 @@ def _fetch_one(ticker: str) -> dict:
     # Price is the only mandatory field - if this fails the row is useless.
     try:
         if kind == "india":
-            raw = get_india_stock_data(ticker)
-            price      = _parse_price(raw)
-            change_5d  = _parse_change(raw)
+            raw = get_india_stock_data(ticker, as_dict=True)
+            if isinstance(raw, dict) and raw.get("error"):
+                return {"ticker": ticker, "type": kind, "error": raw["error"]}
+            price = raw.get("price") if isinstance(raw, dict) else None
+            change_5d = raw.get("five_day_change") if isinstance(raw, dict) else None
         elif kind == "crypto":
             raw = get_crypto_data(get_coin_id(ticker.lower()))
             price      = _parse_price(raw)
@@ -120,8 +138,8 @@ def _fetch_one(ticker: str) -> dict:
     return {
         "ticker": ticker,
         "type": kind,
-        "price": price,
-        "change_5d_pct": change_5d,
+        "price": _safe_json_num(price),
+        "change_5d_pct": _safe_json_num(change_5d),
         "sentiment_score": sentiment.get("score"),
         "sentiment_label": sentiment.get("label"),
         "sparkline": sparkline,

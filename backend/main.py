@@ -1,6 +1,28 @@
+import os
+from pathlib import Path
+import time
+import concurrent.futures
+import uvicorn
+from dotenv import load_dotenv
+import logging
+
+# Configure logging immediately
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Load env from both backend/.env and repo-root .env before importing modules
+# that read env vars at import time.
+_here = Path(__file__).resolve().parent
+load_dotenv(_here / ".env", override=False)
+load_dotenv(_here.parent / ".env", override=False)
+
 from rag.retriever import (
     build_context, get_stock_data, get_financial_news, get_ohlc_yf,
     get_earnings_data, get_news_for_ticker,
@@ -20,12 +42,6 @@ from model.inference import (
     explain_term, generate_portfolio_analysis, generate_earnings_brief,
     generate_portfolio_autopsy,
 )
-import os
-import time
-import concurrent.futures
-import uvicorn
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +145,7 @@ class GenerateResponse(BaseModel):
 
 class StockResponse(BaseModel):
     ticker: str
-    data: str
+    data: str | dict
 
 class SessionResponse(BaseModel):
     session_id: str

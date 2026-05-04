@@ -86,6 +86,10 @@ def _mentions_company(text: str, company_name: str, base_ticker: str) -> bool:
 
 def _groq_post(payload: dict) -> dict | None:
     """Shared Groq HTTP call with retry. Returns parsed JSON or None."""
+    if not GROQ_API_KEY:
+        logger.error("[Groq] GROQ_API_KEY not configured")
+        return None
+    
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type":  "application/json",
@@ -113,8 +117,18 @@ def _groq_post(payload: dict) -> dict | None:
             _sleep_backoff(attempt, resp.headers.get("Retry-After"))
             continue
 
-        logger.warning("[Groq] status %d", resp.status_code)
-        return None
+        # Log detailed error info for 403 and other errors
+        try:
+            error_body = resp.text[:200]
+        except:
+            error_body = "No response body"
+        logger.error("[Groq] status %d (attempt %d/%d): %s. Response: %s", 
+                     resp.status_code, attempt + 1, MAX_RETRIES, 
+                     resp.reason or "Unknown", error_body)
+        
+        if resp.status_code == 403:
+            logger.critical("[Groq] 403 Forbidden - Check your GROQ_API_KEY is valid and has necessary permissions")
+            return None
 
     return None
 
@@ -132,6 +146,7 @@ def _fetch_articles_detailed(
     end_date    = datetime.utcnow().strftime("%Y-%m-%d")
     start_date  = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
     search_term = company_name if company_name else base_ticker
+    logger.debug("[sentiment] _fetch_articles_detailed: ticker=%s, is_indian=%s, search_term=%s", ticker, is_indian, search_term)
 
     # ── Source 1: Finnhub ──────────────────────────────
     finnhub_key = os.getenv("FINNHUB_API_KEY", "")
@@ -145,11 +160,12 @@ def _fetch_articles_detailed(
                     "to":     end_date,
                     "token":  finnhub_key,
                 },
-                timeout=10,
+                timeout=8,
             )
             resp.raise_for_status()
             data = resp.json()
             if isinstance(data, list):
+                logger.debug("[sentiment] Finnhub: found %d articles for %s", len(data), ticker)
                 for item in data[:15]:
                     title = (item.get("headline") or "").strip()
                     desc  = (item.get("summary") or "").strip()
@@ -167,6 +183,9 @@ def _fetch_articles_detailed(
                         ).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         "url":          item.get("url", ""),
                     })
+                logger.debug("[sentiment] Finnhub: after company filter, %d articles for %s", len(articles), ticker)
+        except requests.Timeout:
+            logger.warning("[Finnhub] timeout for %s", ticker)
         except Exception as e:
             logger.warning("[Finnhub] error for %s: %s", ticker, e)
 
@@ -217,6 +236,9 @@ def _fetch_articles_detailed(
                         "published_at": a.get("publishedAt", ""),
                         "url":          a.get("url", ""),
                     })
+                logger.debug("[sentiment] NewsAPI: found %d articles for %s", len(articles), ticker)
+            except requests.Timeout:
+                logger.warning("[NewsAPI] timeout for %s", ticker)
             except Exception as e:
                 logger.warning("[NewsAPI] error for %s: %s", ticker, e)
 
@@ -231,32 +253,75 @@ def _fetch_articles_detailed(
 
 def _fetch_headlines(ticker: str, company_name: str = "") -> list[str]:
     articles  = _fetch_articles_detailed(ticker, company_name, days=3)
+    logger.debug("[sentiment] _fetch_headlines: got %d articles for %s", len(articles), ticker)
     headlines = []
     for a in articles:
         title = a.get("title", "")
         desc  = a.get("description", "")
         headlines.append(f"{title}. {desc}" if desc else title)
+    logger.debug("[sentiment] _fetch_headlines: converted to %d headlines for %s", len(headlines), ticker)
     return headlines
 
 
 # ── Aggregate sentiment scoring ────────────────────────
 
 def _heuristic_score(headlines: list[str]) -> tuple[float, str]:
-    positive = {
-        "beat", "beats", "profit", "profits", "surge", "surged", "rally",
-        "rises", "gains", "upgrade", "buyback", "dividend", "record",
-        "growth", "wins", "contract", "raises", "strong",
+    """Enhanced heuristic sentiment scoring with better keyword detection."""
+    positive_strong = {
+        "beat", "beats", "earnings beat", "profit growth", "surge", "surged", 
+        "rally", "rallied", "rises", "rise", "gain", "gains", "gained", "upgrade", "upgraded",
+        "buyback", "dividend", "record high", "record", "milestone", "growth", "expands", 
+        "wins", "contract", "deal", "partnership", "raises", "strong", "bullish",
+        "expansion", "launch", "acquisition", "approval", "outperform", "positive",
     }
-    negative = {
-        "miss", "misses", "loss", "falls", "fell", "decline", "declines",
-        "downgrade", "cuts", "weak", "fraud", "probe", "debt", "slips",
-        "drops", "lower", "pressure",
+    positive_mild = {
+        "optimism", "promising", "encouragement", "stability", 
+        "recovery", "support", "boost", "increase", "advance", "strength",
     }
+    negative_strong = {
+        "miss", "misses", "earnings miss", "revenue decline", "loss", "losses",
+        "falls", "fall", "fell", "decline", "declines", "declined", "downgrade", "downgraded",
+        "cuts", "weak", "fraud", "probe", "crisis", "debt", "slip", "slips", "slipped",
+        "drops", "drop", "dropped", "lower", "pressure", "weakness", "bearish", "negative",
+        "volatility", "risk", "warning", "underperform", "sell-off", "collapse",
+    }
+    negative_mild = {
+        "caution", "concern", "uncertainty", "challenge", "slowdown", "delay",
+        "skepticism", "monitoring", "skeptical",
+    }
+    
     text = " ".join(headlines).lower()
-    pos = sum(1 for word in positive if re.search(r"\b" + re.escape(word) + r"\b", text))
-    neg = sum(1 for word in negative if re.search(r"\b" + re.escape(word) + r"\b", text))
-    score = max(15.0, min(85.0, 50.0 + ((pos - neg) * 8.0)))
-    label = "Bullish" if score >= 62 else ("Bearish" if score <= 38 else "Neutral")
+    
+    # Count keyword occurrences with weights
+    pos_strong = sum(1 for word in positive_strong if re.search(r"\b" + re.escape(word) + r"\b", text))
+    pos_mild = sum(1 for word in positive_mild if re.search(r"\b" + re.escape(word) + r"\b", text))
+    neg_strong = sum(1 for word in negative_strong if re.search(r"\b" + re.escape(word) + r"\b", text))
+    neg_mild = sum(1 for word in negative_mild if re.search(r"\b" + re.escape(word) + r"\b", text))
+    
+    # Weighted score calculation
+    net_score = (pos_strong * 12.0) + (pos_mild * 4.0) - (neg_strong * 12.0) - (neg_mild * 4.0)
+    
+    # Map to 0-100 range with better distribution
+    if net_score > 30:
+        score = min(95.0, 50.0 + (net_score * 0.8))
+    elif net_score < -30:
+        score = max(5.0, 50.0 + (net_score * 0.8))
+    else:
+        score = 50.0 + (net_score * 0.6)
+    
+    score = max(0.0, min(100.0, score))
+    
+    # Determine label - lower thresholds for better sentiment variation
+    if score >= 58:
+        label = "Bullish"
+    elif score <= 42:
+        label = "Bearish"
+    else:
+        label = "Neutral"
+    
+    logger.debug("[sentiment] heuristic: pos_strong=%d pos_mild=%d neg_strong=%d neg_mild=%d → net=%s → score=%.1f label=%s",
+                 pos_strong, pos_mild, neg_strong, neg_mild, net_score, score, label)
+    
     return score, label
 
 
@@ -266,7 +331,7 @@ def _score_with_groq(ticker: str, headlines: list[str]) -> tuple[float | None, s
         return None, "Insufficient Data"
     if not GROQ_API_KEY:
         score, label = _heuristic_score(headlines)
-        logger.info("[sentiment] GROQ_API_KEY missing for %s; heuristic score=%s label=%s", ticker, score, label)
+        logger.warning("[sentiment] ⚠️ GROQ_API_KEY missing for %s; using heuristic score=%s label=%s", ticker, score, label)
         return score, label
 
     headlines_text = "\n".join(f"- {h}" for h in headlines[:15])
@@ -290,6 +355,7 @@ CALIBRATION:
 
 Respond ONLY with the JSON object. No markdown."""
 
+    logger.debug("[sentiment] calling Groq for %s with %d headlines", ticker, len(headlines))
     data = _groq_post({
         "model":       "llama-3.3-70b-versatile",
         "messages":    [{"role": "user", "content": prompt}],
@@ -299,7 +365,7 @@ Respond ONLY with the JSON object. No markdown."""
 
     if not data:
         score, label = _heuristic_score(headlines)
-        logger.info("[sentiment] Groq unavailable/unparseable for %s; heuristic score=%s label=%s", ticker, score, label)
+        logger.warning("[sentiment] ⚠️ Groq unavailable/unparseable for %s; falling back to heuristic score=%s label=%s", ticker, score, label)
         return score, label
 
     try:
@@ -307,10 +373,13 @@ Respond ONLY with the JSON object. No markdown."""
         label = data.get("label", "Neutral")
         if label not in ("Bearish", "Neutral", "Bullish"):
             label = "Bullish" if score >= 66 else ("Bearish" if score <= 34 else "Neutral")
+        logger.info("[sentiment] ✓ Groq analysis for %s: score=%s label=%s", ticker, score, label)
         return score, label
     except Exception as e:
-        logger.warning("[Groq sentiment] parse error for %s: %s", ticker, e)
-        return 50.0, "Neutral"
+        logger.error("[sentiment] ❌ parse error for %s from Groq response %s: %s", ticker, data, e)
+        score, label = _heuristic_score(headlines)
+        logger.warning("[sentiment] falling back to heuristic score=%s label=%s", score, label)
+        return score, label
 
 
 # ── Per-article impact scoring ─────────────────────────
@@ -384,10 +453,12 @@ def get_sentiment(ticker: str, company_name: str = "") -> dict:
 
     with _cache_lock:
         if ticker in _cache:
+            logger.debug("[sentiment] cache hit for %s", ticker)
             return dict(_cache[ticker])
 
+    logger.info("[sentiment] cache miss for %s; fetching headlines...", ticker)
     headlines    = _fetch_headlines(ticker, company_name)
-    logger.info("[sentiment] %s fetched %d headline(s)", ticker, len(headlines))
+    logger.info("[sentiment] %s fetched %d headline(s) for analysis", ticker, len(headlines))
     score, label = _score_with_groq(ticker, headlines)
 
     result = {

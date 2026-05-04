@@ -7,7 +7,11 @@ import {
 import Aperture from "./Aperture";
 import "./App.css";
 
-const API_URL = process.env.REACT_APP_API_URL || "https://quantiq-go.onrender.com";
+const API_URL =
+  process.env.REACT_APP_API_URL ||
+  ((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+    ? "http://localhost:8001"
+    : "https://quantiq-go.onrender.com");
 
 // ── Color tokens ────────────────────────────────────────
 const C = {
@@ -286,8 +290,8 @@ function SentimentGauge({ ticker, sentiment, loading }) {
         <LoadingLine message="Analyzing headlines…" />
       ) : score != null ? (
         <>
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <svg viewBox="0 0 200 108" width="200" height="108" style={{ overflow: "visible" }}>
+          <div style={{ display: "flex", justifyContent: "center", minHeight: 112 }}>
+            <svg viewBox="0 0 200 108" width="200" height="108" style={{ overflow: "visible", display: "block" }}>
               <defs>
                 <linearGradient id="sg-grad" x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%"   stopColor="#E05C5C" />
@@ -315,7 +319,7 @@ function SentimentGauge({ ticker, sentiment, loading }) {
             </svg>
           </div>
 
-          <div style={{ textAlign: "center", marginTop: -4, marginBottom: 16 }}>
+          <div style={{ textAlign: "center", marginTop: -4, marginBottom: 16, minHeight: 64 }}>
             <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 32, color: C.text, lineHeight: 1 }}>{score}</div>
             <div className="label" style={{ marginTop: 6 }}>{label}</div>
             <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, color: C.textTer, marginTop: 4 }}>
@@ -529,15 +533,15 @@ function StockCard({ stock, isSelected, onClick, sentiment, sentimentLoading }) 
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 16 }}>
         <div className="label" style={{ fontSize: 10 }}>Sentiment</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 94, justifyContent: "flex-end" }}>
           {sentimentLoading ? (
             <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10, color: C.textTer }}>…</span>
           ) : sentiment?.score != null ? (
             <>
               <SentimentBar score={sentiment.score} />
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: sentimentColor(sentiment.score), minWidth: 18 }}>{sentiment.score}</span>
+              <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: sentimentColor(sentiment.score), minWidth: 28, textAlign: "right" }}>{sentiment.score}</span>
             </>
           ) : (
             <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10, color: C.textTer }}>—</span>
@@ -564,7 +568,7 @@ function WatchlistTable({ watchlist, sentiments, sentimentLoading, onSelect }) {
         const sLoad = sentimentLoading[s.ticker];
         const sym   = currencySymbol(s.type);
         return (
-          <div key={s.ticker} className="wl-row" style={{ animationDelay: `${idx * 0.05}s` }}
+          <div key={s.ticker} className="wl-row"
             onClick={() => onSelect(s)}>
             <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.ticker}</div>
             <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.textSec, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.name}>{s.name}</div>
@@ -578,13 +582,13 @@ function WatchlistTable({ watchlist, sentiments, sentimentLoading, onSelect }) {
                 </span>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 96 }}>
               {sLoad ? (
                 <span style={{ fontSize: 11, color: C.textTer }}>…</span>
               ) : sent?.score != null ? (
                 <>
                   <SentimentBar score={sent.score} />
-                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: sentimentColor(sent.score) }}>{sent.score}</span>
+                  <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: sentimentColor(sent.score), minWidth: 28, textAlign: "right" }}>{sent.score}</span>
                 </>
               ) : <span style={{ fontSize: 11, color: C.textTer }}>—</span>}
             </div>
@@ -1820,7 +1824,9 @@ export default function App() {
   function renderSection() {
     switch (activeSection) {
       case "market":    return <MarketView />;
-      case "chat":      return <ChatView />;
+      // ChatView is defined inside App; rendering it as <ChatView /> creates a
+      // new component type on each keystroke and can remount the input.
+      case "chat":      return ChatView();
       case "watchlist": return <WatchlistView />;
       case "compare":   return <CompareView />;
       case "portfolio": return <PortfolioView />;

@@ -160,7 +160,6 @@
   border-bottom: 1px solid #1E1E24;
   cursor: pointer;
   transition: background 150ms ease;
-  animation: fadeUp 0.28s ease both;
 }
 .wl-row:hover { background: #17171A; }
 .wl-row:active { background: #1E1E24; }

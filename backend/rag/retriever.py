@@ -121,6 +121,20 @@ def get_news_for_ticker(
 # ── Stock ──────────────────────────────────────────────
 
 def get_stock_data(ticker: str) -> dict:
+    # Route NSE/BSE symbols through the India pipeline first.
+    # That path already includes NSE + Alpha Vantage fallbacks when yfinance
+    # is flaky for Indian tickers on some network/IP setups.
+    t_upper = ticker.upper()
+    if t_upper.endswith(".NS") or t_upper.endswith(".BO"):
+        try:
+            from rag.india_stocks import get_india_stock_data
+
+            india_data = get_india_stock_data(ticker, as_dict=True)
+            if isinstance(india_data, dict) and "error" not in india_data:
+                return india_data
+        except Exception as e:
+            logger.warning("[india_stock_data] error for %s: %s", ticker, e)
+
     try:
         t    = yf.Ticker(ticker)
         info = t.info
