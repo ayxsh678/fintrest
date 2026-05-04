@@ -1012,6 +1012,14 @@ export default function App() {
     fetchNews(selectedStock.ticker, selectedStock.name);
   }, [selectedStock.ticker, fetchSentiment, fetchNews]);
 
+  // Load alerts when user navigates to the alerts section
+  useEffect(() => {
+    if (activeSection === "alerts") {
+      fetchAlerts();
+      setAlertError("");
+    }
+  }, [activeSection]); // fetchAlerts is stable (defined in same scope, recreated each render but callback runs after)
+
   // Alert polling — pauses when tab hidden to avoid wasted requests
   useEffect(() => {
     const poll = async () => {
@@ -1028,7 +1036,18 @@ export default function App() {
     poll();
     const t = setInterval(poll, 300_000);
     return () => clearInterval(t);
-  }, [fetchAlerts]);
+  }, []);
+
+  // ── Handlers ───────────────────────────────────────────
+  const fetchAlerts = async () => {
+    const sid = getSessionId();
+    if (!sid) return;
+    try {
+      const res  = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
+      const data = await res.json();
+      setAlerts(Array.isArray(data) ? data : []);
+    } catch {}
+  };
 
   const createAlert = async () => {
     const ticker    = alertTicker.toUpperCase().trim();
@@ -1716,7 +1735,6 @@ export default function App() {
 
   // ── Alerts view ───────────────────────────────────────
   function AlertsView() {
-    useEffect(() => { fetchAlerts(); setAlertError(""); }, []);
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: isMobile ? 16 : 24 }}>
         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: C.text, marginBottom: 20 }}>Price Alerts</div>
