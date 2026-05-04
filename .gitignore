@@ -8,17 +8,15 @@ backend/.env
 frontend/node_modules/
 frontend/build/
 
-# Model adapters (too large for GitHub)
-backend/adapters/
-
-# Mac
-.DS_Store
-.env
-**/.env
-.env
-**/.env
+# Claude
 .claude/
-backend/finance-ai
+backend/.claude/
 
-# Patch files
-*.patch
+# General
+.env
+.env.local
+.env.*.local
+.DS_Store
+.vercel
+dist/
+coverage/

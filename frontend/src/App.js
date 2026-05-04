@@ -267,7 +267,7 @@ function SentimentGauge({ ticker, sentiment, loading }) {
   const angle     = Math.PI * (1 - safeScore / 100);
   const nx        = cx + r * Math.cos(angle);
   const ny        = cy - r * Math.sin(angle);
-  const largeArc  = safeScore > 50 ? 1 : 0;
+  const largeArc  = 0; // arc is always ≤ 180°; largeArc=1 was drawing backwards
   const arcLen    = Math.PI * r * safeScore / 100;
 
   const impactColor = (s) => s >= 7 ? C.pos : s <= 3 ? C.neg : C.textSec;
@@ -286,7 +286,7 @@ function SentimentGauge({ ticker, sentiment, loading }) {
         )}
       </div>
 
-      {loading ? (
+      {loading || sentiment === undefined ? (
         <LoadingLine message="Analyzing headlines…" />
       ) : score != null ? (
         <>
@@ -337,8 +337,10 @@ function SentimentGauge({ ticker, sentiment, loading }) {
             </div>
           )}
         </>
-      ) : (
+      ) : sentiment === null ? (
         <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.textSec }}>Unable to fetch sentiment data.</div>
+      ) : (
+        <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: C.textSec }}>No sentiment data available for this ticker.</div>
       )}
     </div>
   );
@@ -1010,17 +1012,6 @@ export default function App() {
     fetchNews(selectedStock.ticker, selectedStock.name);
   }, [selectedStock.ticker, fetchSentiment, fetchNews]);
 
-  // ── Handlers ───────────────────────────────────────────
-  const fetchAlerts = useCallback(async () => {
-    const sid = getSessionId();
-    if (!sid) return;
-    try {
-      const res  = await fetch(`${API_URL}/get_alerts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sid }) });
-      const data = await res.json();
-      setAlerts(Array.isArray(data) ? data : []);
-    } catch {}
-  }, []);
-
   // Alert polling — pauses when tab hidden to avoid wasted requests
   useEffect(() => {
     const poll = async () => {
@@ -1268,7 +1259,7 @@ export default function App() {
             <TradingViewChart ticker={selectedStock.ticker} height={isMobile ? 180 : 240} days={chartDays} />
           </div>
 
-          <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker] ?? null} loading={sentimentLoading[selectedStock.ticker] ?? false} />
+          <SentimentGauge ticker={selectedStock.ticker} sentiment={sentiments[selectedStock.ticker]} loading={sentimentLoading[selectedStock.ticker] ?? false} />
           <NewsFeed ticker={selectedStock.ticker} news={newsData[selectedStock.ticker] ?? null} loading={newsLoading[selectedStock.ticker] ?? false} />
 
           {/* Suggestions */}
@@ -1725,7 +1716,7 @@ export default function App() {
 
   // ── Alerts view ───────────────────────────────────────
   function AlertsView() {
-    useEffect(() => { fetchAlerts(); setAlertError(""); }, [fetchAlerts]);
+    useEffect(() => { fetchAlerts(); setAlertError(""); }, []);
     return (
       <div style={{ height: "100%", overflowY: "auto", padding: isMobile ? 16 : 24 }}>
         <div style={{ fontFamily: "'DM Serif Display',serif", fontSize: 22, color: C.text, marginBottom: 20 }}>Price Alerts</div>
@@ -1821,12 +1812,12 @@ export default function App() {
   }
 
   // ── Render active section ──────────────────────────────
+  // Called as functions (not JSX components) so React never sees a new component
+  // type reference on re-render — prevents unmount/remount and input focus loss.
   function renderSection() {
     switch (activeSection) {
       case "market":    return <MarketView />;
-      // ChatView is defined inside App; rendering it as <ChatView /> creates a
-      // new component type on each keystroke and can remount the input.
-      case "chat":      return ChatView();
+      case "chat":      return <ChatView />;
       case "watchlist": return <WatchlistView />;
       case "compare":   return <CompareView />;
       case "portfolio": return <PortfolioView />;
@@ -1859,12 +1850,12 @@ export default function App() {
 
       <div style={{ display: "flex", height: "100vh", background: C.bg, color: C.text, overflow: "hidden" }}>
         {/* Sidebar (non-mobile) */}
-        {!isMobile && <Sidebar />}
+        {!isMobile && Sidebar()}
 
         {/* Main area */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
           {/* Mobile "more" sub-nav */}
-          {isMobile && mobileTab === "more" && <MobileMoreNav />}
+          {isMobile && mobileTab === "more" && MobileMoreNav()}
 
           {/* Content */}
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -1872,7 +1863,7 @@ export default function App() {
           </div>
 
           {/* Mobile bottom nav */}
-          {isMobile && <MobileNav />}
+          {isMobile && MobileNav()}
         </div>
       </div>
     </>

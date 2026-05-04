@@ -1,0 +1,3979 @@
+From ed1d30572597668f5d68c216f53cffa8d5e04a23 Mon Sep 17 00:00:00 2001
+From: Ayush <ayushverma567@gmail.com>
+Date: Mon, 20 Apr 2026 14:25:20 +0530
+Subject: [PATCH] feat(brand): integrate Fintrest identity at the chrome layer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Lays the design-system foundation (tokens, Aperture mark, type) and
+swaps the emoji logos + softens the chat intro, without touching any
+of the working trading panes.
+
+New
+- frontend/src/tokens.js — source of truth for colors, spacing, radii,
+  typography, motion. All future UI work should consume these.
+- frontend/src/Aperture.jsx — reusable React component of the Fintrest
+  mark with solid/outline/glyph variants.
+- frontend/public/favicon.svg — V2 outlined aperture on Carbon.
+- frontend/public/landing.html — self-contained marketing page served
+  at /landing.html. Hero, triad, editorial quote, waitlist form.
+- fintrest-*.md / .svg — brand + product + build + copy + landing specs.
+
+Changed
+- frontend/src/App.js — imports Aperture, replaces the two 💹 emoji
+  logos (auth modal + header) with the mark, softens the chat intro
+  to match the Fintrest voice ("tell you what the numbers actually
+  say" rather than "AI-powered financial advisor"). Trading panes
+  untouched.
+- frontend/src/index.css — Fintrest globals (Carbon/Pearl, Inter +
+  Fraunces + JetBrains Mono, focus rings, reduced-motion). Preserves
+  the upstream .chart-tv-badge styles.
+- frontend/public/index.html — real title/description/OG tags, theme
+  color #0A0B0C, Google Fonts wired up, new favicon link.
+- frontend/public/manifest.json — Fintrest name, theme/background
+  #0A0B0C.
+
+Deliberately out of scope
+- The yellow #f7c843 accent inside watchlist/chart/compare panes.
+  It's load-bearing at 20+ sites with no tests; migrating it needs
+  its own pass with smoke tests.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+---
+ fintrest-aperture-marks.svg   | 114 ++++++
+ fintrest-aperture-spec.md     | 347 ++++++++++++++++
+ fintrest-brand-direction.md   | 168 ++++++++
+ fintrest-build-spec.md        | 743 ++++++++++++++++++++++++++++++++++
+ fintrest-landing-spec.md      | 457 +++++++++++++++++++++
+ fintrest-product-design.md    | 533 ++++++++++++++++++++++++
+ fintrest-ux-copy.md           | 655 ++++++++++++++++++++++++++++++
+ frontend/public/favicon.svg   |  16 +
+ frontend/public/index.html    |  52 ++-
+ frontend/public/landing.html  | 341 ++++++++++++++++
+ frontend/public/manifest.json |  14 +-
+ frontend/src/Aperture.jsx     |  92 +++++
+ frontend/src/App.js           |  11 +-
+ frontend/src/index.css        | 113 +++++-
+ frontend/src/tokens.js        | 103 +++++
+ 15 files changed, 3718 insertions(+), 41 deletions(-)
+ create mode 100644 fintrest-aperture-marks.svg
+ create mode 100644 fintrest-aperture-spec.md
+ create mode 100644 fintrest-brand-direction.md
+ create mode 100644 fintrest-build-spec.md
+ create mode 100644 fintrest-landing-spec.md
+ create mode 100644 fintrest-product-design.md
+ create mode 100644 fintrest-ux-copy.md
+ create mode 100644 frontend/public/favicon.svg
+ create mode 100644 frontend/public/landing.html
+ create mode 100644 frontend/src/Aperture.jsx
+ create mode 100644 frontend/src/tokens.js
+
+diff --git a/fintrest-aperture-marks.svg b/fintrest-aperture-marks.svg
+new file mode 100644
+index 0000000..9f56e76
+--- /dev/null
++++ b/fintrest-aperture-marks.svg
+@@ -0,0 +1,114 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++  Fintrest — Aperture Mark v1.0
++  Three variations on a single artboard.
++  All geometry matches fintrest-aperture-spec.md §1.
++
++  BLADE UNIT CELL (used via <use href="#blade">):
++    V0 = (650.56, 432)      trailing-edge inner anchor (hexagon vertex at 30°)
++    O0 = (844.55, 320)      trailing-edge outer anchor (outer circle at 30°)
++    O1 = (512.00, 128)      leading-edge  outer anchor (outer circle at 90°)
++    V1 = (512.00, 352)      leading-edge  inner anchor (hexagon vertex at 90°)
++    Arc radius: 384
++    Cubic control points for the leading edge: (540, 220) and (580, 280)
++    Close segment V1→V0 is the hexagon edge (straight).
++
++  To rebuild the full aperture, <use> this blade and rotate by 60° × n around (512, 512).
++-->
++<svg xmlns="http://www.w3.org/2000/svg"
++     viewBox="0 0 3472 1324"
++     font-family="-apple-system, Inter, sans-serif">
++
++  <defs>
++    <!-- The blade unit cell. Do not edit. -->
++    <path id="blade"
++          d="M 650.56 432
++             L 844.55 320
++             A 384 384 0 0 0 512 128
++             C 540 220, 580 280, 512 352 Z" />
++
++    <!-- App-icon radial background (§3.2) -->
++    <radialGradient id="bgGradient" cx="50%" cy="40%" r="80%">
++      <stop offset="0%" stop-color="#14181A"/>
++      <stop offset="100%" stop-color="#0A0B0C"/>
++    </radialGradient>
++
++    <!-- Evergreen inner glow in the hexagonal void (§3.4) -->
++    <radialGradient id="innerGlow" cx="50%" cy="50%" r="50%">
++      <stop offset="0%" stop-color="#1F5C46" stop-opacity="0.55"/>
++      <stop offset="60%" stop-color="#1F5C46" stop-opacity="0.10"/>
++      <stop offset="100%" stop-color="#1F5C46" stop-opacity="0"/>
++    </radialGradient>
++
++    <!-- Blade highlight for large renders (§3.5) -->
++    <linearGradient id="bladeHighlight" x1="20%" y1="20%" x2="80%" y2="80%">
++      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.14"/>
++      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0"/>
++    </linearGradient>
++
++    <!-- The full 6-blade aperture as a reusable symbol -->
++    <g id="aperture">
++      <use href="#blade"/>
++      <use href="#blade" transform="rotate(60 512 512)"/>
++      <use href="#blade" transform="rotate(120 512 512)"/>
++      <use href="#blade" transform="rotate(180 512 512)"/>
++      <use href="#blade" transform="rotate(240 512 512)"/>
++      <use href="#blade" transform="rotate(300 512 512)"/>
++    </g>
++  </defs>
++
++  <!-- Page background -->
++  <rect width="3472" height="1324" fill="#050506"/>
++
++  <!-- ═══════════════════════════════════════════════════════════════
++       V1 — Solid Aperture (app-icon treatment)
++       ═══════════════════════════════════════════════════════════════ -->
++  <g id="variant-1-solid" transform="translate(100, 100)">
++    <!-- iOS rounded-rectangle mask preview (corner radius 229 on 1024) -->
++    <rect width="1024" height="1024" rx="229" ry="229" fill="url(#bgGradient)"/>
++    <!-- Inner evergreen glow in the hexagonal void -->
++    <circle cx="512" cy="512" r="240" fill="url(#innerGlow)"/>
++    <!-- The mark -->
++    <g fill="#FAFAF7">
++      <use href="#aperture"/>
++    </g>
++    <!-- Blade highlight pass -->
++    <g fill="url(#bladeHighlight)" style="mix-blend-mode: screen;">
++      <use href="#aperture"/>
++    </g>
++    <text x="512" y="1180" text-anchor="middle"
++          fill="#A6ADB4" font-size="36" letter-spacing="4">
++      V1 — SOLID APERTURE
++    </text>
++  </g>
++
++  <!-- ═══════════════════════════════════════════════════════════════
++       V2 — Outlined Aperture (UI variant, 12px stroke @ 1024)
++       ═══════════════════════════════════════════════════════════════ -->
++  <g id="variant-2-outline" transform="translate(1224, 100)">
++    <rect width="1024" height="1024" rx="229" ry="229" fill="#0F0F10"/>
++    <g fill="none" stroke="#FAFAF7" stroke-width="12"
++       stroke-linejoin="miter" stroke-miterlimit="4">
++      <use href="#aperture"/>
++    </g>
++    <text x="512" y="1180" text-anchor="middle"
++          fill="#A6ADB4" font-size="36" letter-spacing="4">
++      V2 — OUTLINED
++    </text>
++  </g>
++
++  <!-- ═══════════════════════════════════════════════════════════════
++       V3 — Single-Blade Glyph (reductive mark)
++       Rotated to the 150° position so the leading curve echoes
++       the descender of a lowercase "f" in "fintrest".
++       ═══════════════════════════════════════════════════════════════ -->
++  <g id="variant-3-single-blade" transform="translate(2348, 100)">
++    <rect width="1024" height="1024" rx="229" ry="229" fill="#0F0F10"/>
++    <use href="#blade" fill="#FAFAF7" transform="rotate(120 512 512)"/>
++    <text x="512" y="1180" text-anchor="middle"
++          fill="#A6ADB4" font-size="36" letter-spacing="4">
++      V3 — SINGLE BLADE
++    </text>
++  </g>
++
++</svg>
+diff --git a/fintrest-aperture-spec.md b/fintrest-aperture-spec.md
+new file mode 100644
+index 0000000..8918c0c
+--- /dev/null
++++ b/fintrest-aperture-spec.md
+@@ -0,0 +1,347 @@
++# Fintrest — Aperture Mark (Production Spec v1.0)
++
++*Concept 03 deepened to a production-ready specification. This document is the source of truth for the mark, its variations, the iOS app icon, and the launch animation. Hand it to design + engineering as-is.*
++
++---
++
++## 1. The Primary Mark — Geometry & Proportions
++
++### 1.1 Canvas & safe area
++
++| Property | Value |
++|----------|-------|
++| Source canvas | 1024 × 1024 px |
++| Safe area | 832 × 832 px (centered, 96px margin) |
++| Center origin | (512, 512) |
++| Mark fits inside | Safe area only — never crops to canvas edge |
++
++All measurements below are in source pixels at 1× (1024 canvas). For UI use, the mark should be exported as SVG so it scales linearly.
++
++### 1.2 Blade count
++
++**6 blades.** This is the defining decision. Reasoning:
++
++- **5 blades** reads as a pinwheel/star. Too playful, too kinetic.
++- **6 blades** creates a hexagonal central opening — the most architectural, calmest geometry. Reads as "engineered" rather than "spinning."
++- **7 blades** is the premium-camera-lens count (Leica) but creates a heptagonal opening that humans read as slightly off-balance. Looks fussy at small sizes.
++- **8+ blades** approaches a perfect circle in the center — loses the "aperture" identity and becomes a generic ring.
++
++The hexagonal central void is also a quiet nod to honeycomb / structural strength — exactly the subliminal note we want for a finance brand.
++
++### 1.3 Two governing radii
++
++```
++R_outer  = 384 px   → outer extent of every blade tip (75% of canvas)
++R_inner  = 160 px   → distance from center to each hexagon vertex (~31% of canvas)
++```
++
++The visible central opening is therefore a regular hexagon with a side length of 160 px and a vertex-to-vertex span of 320 px.
++
++### 1.4 Hexagon vertex coordinates
++
++Six vertices on the inner hexagon, at angles `θ = 30° + (60° × i)` for i = 0..5. The 30° offset rotates the hexagon so it sits **flat-top** (one edge parallel to the horizontal), which feels more grounded than vertex-up.
++
++| Vertex | Angle | (x, y) |
++|--------|-------|--------|
++| V0 | 30°  | (650.6, 432.0) |
++| V1 | 90°  | (512.0, 352.0) |
++| V2 | 150° | (373.4, 432.0) |
++| V3 | 210° | (373.4, 592.0) |
++| V4 | 270° | (512.0, 672.0) |
++| V5 | 330° | (650.6, 592.0) |
++
++### 1.5 Single blade construction (the unit cell)
++
++Each blade is a quadrilateral with one curved edge. Build one blade, then rotate it by 60° five times around the center.
++
++Blade between V0 and V1 (top-right blade):
++
++```
++1. Start at V0 (650.6, 432.0).
++2. Straight line to point P0 on outer circle:
++   P0 = (R_outer · cos(60°), R_outer · sin(60°)) + center
++      = (704.0, 179.4)        ← outer-right anchor
++   This is the "trailing edge" — the blade's straight back edge.
++3. Outer arc (clockwise) from P0 to P1:
++   P1 = (R_outer · cos(120°), R_outer · sin(120°)) + center
++      = (320.0, 179.4)        ← outer-left anchor
++   Arc radius = R_outer (384). Sweep 60° along the outer circle.
++4. Curved leading edge from P1 back to V1:
++   This is a cubic Bézier with the curve bowed *inward* (toward center).
++   Control points:
++     C1 = P1 nudged 64px toward center along its radial line
++     C2 = V1 nudged 96px outward along its radial line, then rotated +12°
++   This asymmetry is what makes the mark read as an *aperture mid-rotation*
++   rather than a static gear. The 12° rotation is the single most important
++   detail in the whole mark — without it, this is a cog.
++5. Close path back to V0.
++```
++
++Repeat by rotating the entire path 60°, 120°, 180°, 240°, 300° around (512, 512). All 6 blades are identical — no per-blade variation.
++
++### 1.6 Blade visual properties
++
++| Property | Value |
++|----------|-------|
++| Fill | `#FAFAF7` (Pearl) on dark backgrounds; `#0F0F10` (Carbon) on light |
++| Stroke | None on the mark itself |
++| Inter-blade gap | 0px (blades meet exactly at hexagon edges — no visible seam) |
++| Bevel on blade tip | 1° inward chamfer at the outermost 8px of each blade |
++
++The 1° chamfer is invisible at glance but stops the blade tips from looking laser-cut — they pick up light slightly differently than the body of the blade, which gives the mark a sculpted quality at large sizes.
++
++### 1.7 What you must not change
++
++- **Hexagon orientation:** flat-top, not vertex-up.
++- **Asymmetric blade:** the 12° leading-edge rotation. This is the mark.
++- **Blade count:** 6. Not 5, not 7, not 8.
++- **Inner-to-outer ratio:** R_inner / R_outer = 0.417. This balance was tuned so the mark reads as "aperture closing" rather than "fully open" or "fully shut." More closed and it becomes a flower; more open and it becomes a ring.
++
++---
++
++## 2. Three Variations of the Mark
++
++The mark needs to live in three different size regimes. Each has its own variant.
++
++### 2.1 V1 — Solid Aperture *(primary mark)*
++
++The construction described above. Six solid blades, hexagonal void.
++
++**Use for:**
++- App icon (all sizes)
++- Splash screens
++- Marketing hero placements
++- Anything ≥ 32px
++
++**Colors:**
++- Pearl (`#FAFAF7`) on Carbon (`#0F0F10`) background — primary
++- Carbon on Pearl — for printed materials, secondary
++- Evergreen (`#1F5C46`) on Pearl — restricted use, for "deposit confirmed" / success states only
++
++### 2.2 V2 — Outlined Aperture *(UI variant)*
++
++Same blade geometry, but rendered as a single 16px stroke along the *outer* contour only — so you see the silhouette of the aperture but not the interior division between blades.
++
++**Why a separate variant:** at small UI sizes (16-32px) the inter-blade edges become visual noise. The outline preserves the silhouette — the hexagonal void surrounded by the petaled outer shape — without the noise.
++
++**Stroke width scales with target size:**
++
++| Target size | Stroke width |
++|-------------|-------------|
++| 16 px | 1.5 px |
++| 24 px | 2 px |
++| 32 px | 2.5 px |
++| 48 px | 3.5 px |
++
++**Use for:**
++- Tab-bar icons
++- Inline brand mentions in text
++- Loading spinners (rotates slowly)
++- Browser favicon
++
++### 2.3 V3 — Single-Blade Glyph *(reductive mark)*
++
++A single blade in isolation, oriented at the **150° position** (top-left). The blade's leading curve, read in isolation, suggests the descender/curve of a lowercase **f** — connecting the mark back to the wordmark "fintrest." This is intentional and intelligent: the relationship is felt, never spelled out.
++
++**Use for:**
++- Profile avatars (default user state, in-app)
++- Account-tier badges (filled in different metals: bronze, silver, gold)
++- Email signature glyph
++- Apple Watch complication
++- Any context ≤ 16px or where the full aperture would be illegible
++
++**Colors:** monochrome only. Pearl on Carbon, or Carbon on Pearl. No accent color use for V3.
++
++---
++
++## 3. iOS App Icon — Production Mock Descriptions
++
++The iOS icon is the most-seen instance of the brand. These are the exact specifications.
++
++### 3.1 Icon canvas
++
++- Source export: 1024 × 1024 px (App Store requirement)
++- iOS applies the rounded-rectangle mask automatically (corner radius ≈ 22.37% of side, or 229px on the 1024 canvas) — **do not pre-apply the mask**
++- Safe content area: 832 × 832 px centered
++
++### 3.2 Background composition
++
++A radial gradient, not a flat fill. Purpose: depth at glance distance, restraint up close.
++
++```
++Type:        radial gradient
++Center:      (512, 412)        ← shifted 100px above geometric center
++Inner color: #14181A           ← Carbon Lifted (slightly warmer than pure Carbon)
++Outer color: #0A0B0C           ← near-black
++Radius:      820 px            ← extends past the canvas edge
++Easing:      ease-out          ← quick falloff, then long calm tail
++```
++
++The off-center origin creates the impression of a single light source coming from above — like the icon is in a room with a north-facing window. Gen-Z premium (Linear, Arc, Things 3) all use this trick.
++
++### 3.3 Mark placement & scale
++
++- Aperture mark, V1, in **Pearl** `#FAFAF7`
++- Centered at (512, 512)
++- Scaled to 760 × 760 px (slightly larger than safe area's 832, but inside the iOS visual mask)
++- The hexagonal void in the center of the mark sits at the optical center of the icon — this matters because users' eyes lock onto that void first
++
++### 3.4 The inner glow (the most important detail)
++
++A small, contained glow *inside the hexagonal void only*. This is what makes the icon feel premium instead of flat.
++
++```
++Shape:       circle
++Center:      (512, 512)
++Radius:      120 px
++Fill:        #1F5C46 at 35% opacity (Evergreen)
++Blur:        Gaussian, 60 px radius
++Blend mode:  screen
++```
++
++Effect: there appears to be a tiny green light coming from "behind" the lens. At a glance distance you don't see green — you see warmth. Up close it's an intentional detail. This is exactly how the Spotify icon's gradient works: invisible until you look.
++
++### 3.5 The blade highlight (large sizes only)
++
++For renders ≥ 256px, add a soft directional highlight along the upper-left edge of each blade:
++
++```
++Source: linear gradient on each blade
++Angle:  315° (light from upper-left)
++Stops:  #FFFFFF at 12% opacity → transparent
++Width:  spans only the outer 30% of each blade
++```
++
++This is the chamfer from §1.6 made visible. Skip for icons ≤ 128px (it becomes mud).
++
++### 3.6 How it reads on the iPhone home screen
++
++- **Next to Spotify (green circle on black):** Fintrest's hexagonal void echoes Spotify's circular form factor without competing with its bright color. The Pearl mark on Carbon background reads cleaner than Spotify's busy waveform — it looks more *deliberate*.
++- **Next to the Apple Wallet icon:** Wallet uses a black background with vivid card slabs. Fintrest's restraint reads as "the grown-up version of money apps."
++- **Next to Robinhood (white background, green feather):** Fintrest looks like the *next decade* of finance design. Robinhood looks like 2017.
++- **In a folder, at 60×60px:** the V1 mark holds because the hexagonal void is the dominant feature — humans recognize hexagons fast. Spotify, Threads, and X all win at small sizes by being *one shape*; Fintrest does the same.
++- **In dark mode:** indistinguishable from the icon's standard rendering. This is intentional — we are *already* dark mode.
++
++### 3.7 Required exports
++
++| File | Size | Purpose |
++|------|------|---------|
++| `AppIcon-1024.png` | 1024 × 1024 | App Store |
++| `AppIcon-180.png` | 180 × 180 | iPhone @3x |
++| `AppIcon-167.png` | 167 × 167 | iPad Pro |
++| `AppIcon-152.png` | 152 × 152 | iPad |
++| `AppIcon-120.png` | 120 × 120 | iPhone @2x |
++| `AppIcon-87.png` | 87 × 87 | iPhone settings @3x |
++| `AppIcon-58.png` | 58 × 58 | iPhone settings @2x |
++| `AppIcon-40.png` | 40 × 40 | Spotlight |
++| `AppIcon-tinted.png` | 1024 × 1024 | iOS 18 tinted home screen — Pearl mark on transparent background, no glow |
++
++For iOS 18's tinted home-screen mode, ship a separate asset: just the Pearl mark on transparent. The system applies the user's tint automatically. Do **not** include the gradient background or the inner glow on this version.
++
++---
++
++## 4. Launch Micro-interaction — The Aperture Open
++
++The mark is a camera aperture. When the app opens, it opens. This is the entire animation philosophy.
++
++### 4.1 Sequence
++
++| Phase | Time | What happens |
++|-------|------|--------------|
++| t = 0 ms | — | App tapped. iOS hands off to launch screen. Static aperture mark, V1, Pearl on Carbon, centered. |
++| 0 → 80 ms | 80 ms hold | Mark holds in resting state. The pause is necessary — without it, the open feels reactive, not deliberate. |
++| 80 → 320 ms | 240 ms | **The Open.** All 6 blades rotate +14° around the center, opening the hexagonal void from 320px to 460px. Easing: `cubic-bezier(0.22, 1, 0.36, 1)` (ease-out-quint). |
++| 280 → 360 ms | 80 ms (overlap) | The inner glow's opacity ramps from 35% to 75% and its radius expands from 120px to 220px. |
++| 320 → 480 ms | 160 ms | **The Reveal.** A circular wipe expands from the center of the void, easing the launch screen out and the home screen in. The mark cross-dissolves to the home screen content. |
++| 480 ms | — | Home screen visible. Animation complete. Total: **480 ms**. |
++
++### 4.2 Easing curves (verbatim, drop into code)
++
++```
++Open:           cubic-bezier(0.22, 1, 0.36, 1)        -- ease-out-quint
++Glow ramp:      cubic-bezier(0.4, 0, 0.2, 1)          -- standard material
++Reveal wipe:    cubic-bezier(0.65, 0, 0.35, 1)        -- ease-in-out-cubic
++```
++
++### 4.3 Haptic
++
++Single `UIImpactFeedbackGenerator(style: .soft)` fires at **t = 280 ms** — the moment the blades reach max open. Not a heavy thunk; a quiet *tick*, like a mechanical shutter releasing.
++
++Why this exact timing: the haptic should land on the *resolution* of the motion, not its start. Hitting at t=0 feels like a press confirmation; hitting at t=280 feels like the mark is the cause of the haptic, which is what we want.
++
++### 4.4 Sound (optional, default off)
++
++A 240ms sample of a Hasselblad shutter, pitched down 30%, gain at -22dB. **Default off** — opt-in via Settings → Sounds. Most users won't enable it, but the small cohort who do will love it, and it costs nothing to ship.
++
++### 4.5 Loading-state continuation
++
++If the app needs to do work after launch (network call, biometric auth), the aperture **does not vanish immediately**. Instead:
++
++- After the Reveal completes at 480 ms, the V2 outlined aperture appears in the top-left of the screen (32px, Pearl)
++- It rotates continuously, 1 full revolution every 2.4 seconds, linear easing
++- When the work completes, it fades out over 200 ms
++
++This makes the loading indicator part of the brand instead of a generic spinner. Same pattern as the Stripe page transitions.
++
++### 4.6 SwiftUI implementation sketch
++
++```swift
++struct ApertureLaunchView: View {
++  @State private var isOpen = false
++  @State private var glowOpacity = 0.35
++  @State private var glowScale: CGFloat = 1.0
++
++  var body: some View {
++    ZStack {
++      RadialGradient(/* §3.2 */)
++
++      Circle()
++        .fill(Color(hex: "1F5C46"))
++        .opacity(glowOpacity)
++        .frame(width: 240 * glowScale, height: 240 * glowScale)
++        .blur(radius: 60)
++
++      ApertureShape(blades: 6)
++        .fill(Color(hex: "FAFAF7"))
++        .frame(width: 760, height: 760)
++        .rotationEffect(.degrees(isOpen ? 14 : 0))
++    }
++    .onAppear {
++      DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
++        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.24)) {
++          isOpen = true
++        }
++        withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.16)
++                     .delay(0.20)) {
++          glowOpacity = 0.75
++          glowScale = 1.83
++        }
++        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
++          UIImpactFeedbackGenerator(style: .soft).impactOccurred()
++        }
++      }
++    }
++  }
++}
++```
++
++The `ApertureShape` itself is provided as an SVG in the companion file `fintrest-aperture-marks.svg` — convert to a `Path` once and cache.
++
++---
++
++## 5. Asset Handoff Checklist
++
++- [ ] V1 (solid) — SVG, exported at 1024×1024 with no fill (color via CSS/SwiftUI)
++- [ ] V2 (outline) — SVG with 4 stroke-width variants (1.5, 2, 2.5, 3.5)
++- [ ] V3 (single blade) — SVG, monochrome only
++- [ ] App icon — 9 PNG sizes per §3.7
++- [ ] iOS 18 tinted icon — separate transparent PNG
++- [ ] Apple Watch complication — V3, exported at 24, 32, 44px
++- [ ] Favicon — V2 outline, 16, 32 px
++- [ ] Animation reference — Lottie JSON or .mov of the launch sequence (240fps, 1024px square)
++
++The companion SVG file (`fintrest-aperture-marks.svg`) contains all three variations as a single artboard, layered and named for easy export from Figma or directly from the SVG.
++
++---
++
++*Spec v1.0 — production-ready. Anything not specified above is a designer judgment call; anything specified above is locked.*
+diff --git a/fintrest-brand-direction.md b/fintrest-brand-direction.md
+new file mode 100644
+index 0000000..b50b2cf
+--- /dev/null
++++ b/fintrest-brand-direction.md
+@@ -0,0 +1,168 @@
++# Fintrest — Brand Direction
++
++*Premium finance, quietly confident. Three distinct directions — pick the one that sounds the most like the company you want to build.*
++
++---
++
++## Positioning Read
++
++Before the marks: the brief says *simple like Apple, trustworthy like a bank, smart like AI*. The failure mode of most Gen-Z fintech is loud color + playful mascot + "we're the cool one." That does not age into a billion-dollar brand. Cash App did, but only because it owned green so early nothing else could.
++
++The winning move for Fintrest is **editorial restraint** — the visual language of money that has been managed for a long time (private banking, rare watches, architectural magazines) retooled for the phone. Monarch, Mercury, Copilot.money, Rally, and Stripe already understand this. The work is to land a mark that feels like it belongs on that shelf, not on the App Store trending list.
++
++The name itself is a gift — "Fintrest" contains **crest** (a peak, a heraldic mark), **interest** (the engine of wealth), **trust**, and **rest** (peace of mind). Good marks should compound one of those, not ignore them.
++
++---
++
++## Concept 01 — **The Crest**
++
++*The most poetic of the three. Best if Fintrest wants to feel like the New Yorker of finance apps — editorial, quietly luxurious, for people who want money to be a background hum, not a foreground hobby.*
++
++### The idea
++A single, asymmetric curve that reads as the silhouette of a wave frozen at its crest — the moment just before it breaks. Pulled from the etymology inside the name itself ("crest" = peak of a wave, top of a helm, heraldic mark). The viewer sees an abstract mark first, then — about a second later — the connection to the name clicks. That delayed aha is the whole point; it's what separates premium marks from literal ones.
++
++### Why it's intelligent, not obvious
++It isn't a chart line, an arrow, or a growth curve. Those all point to the *future* — Fintrest's mark points to *the peak moment itself*. The curve is drawn with a subtle mass shift (thicker at the apex, tapering to a hairline tail) so it has the physics of water, not the stiffness of a graph. If you rotated it 90° it would look like a serif's entry stroke — that's intentional.
++
++### Typography
++- **Wordmark:** GT Super Display (or Canela Deck as a substitute) — high-contrast serif, lowercase "fintrest," tight tracking. Editorial gravitas without going full heritage bank.
++- **UI body:** Söhne — the quiet Swiss sans used by The New Yorker and Mailchimp's premium work. Reads as expensive without effort.
++- **Numbers:** GT America Mono, tabular figures. Your balance is the hero; it needs to sit still.
++
++### Palette
++| Role | Name | Hex | Use |
++|------|------|------|-----|
++| Primary ink | Midnight Slate | `#0E1116` | Backgrounds, headings |
++| Primary light | Paper | `#F5F1EA` | Cards, surfaces (warm, not white) |
++| Accent | Vault Gold | `#C9A86B` | The mark, key actions — muted, antique, not bling |
++| Supporting | Tide | `#2A4B5C` | Charts, secondary surfaces |
++| Alert | Ember | `#B24A2A` | Reserved for losses / warnings only |
++
++---
++
++## Concept 02 — **The Ledger Line**
++
++*The most architectural. Best if Fintrest wants to feel like an institution — the fintech equivalent of a Swiss private bank's first app. Most defensible long-term; hardest to execute.*
++
++### The idea
++Strip a logo down until only what is necessary survives. The mark is two strokes: one long horizontal line, one short vertical stroke meeting it just off-center. It's the most primitive accounting notation in human history — the tally, the ledger line, the "this is where the books balance" — abstracted until it reads as pure form. The "F" is only *implied*; you won't see it unless someone tells you.
++
++### Why it's intelligent, not obvious
++It references finance's oldest tool (the double-entry ledger, Venice, 1494) without drawing anything you'd find in a stock image search. It's the opposite of a mascot: it's architecture. Marks this austere age well — they look like they were designed in 1985 or 2035, and nobody can tell. Compare to Chase's octagon or Bank of America's banner: they are carried by consistency, not cleverness. The Ledger Line plays the same long game.
++
++### Typography
++- **Wordmark:** Editorial New by Pangram Pangram — a modern display serif with just enough stroke contrast to feel like an architectural drawing label. Set "FINTREST" in small caps.
++- **UI body:** Inter Display, weight 400, generous line height. Disappears into the page.
++- **Numbers:** GT America Mono, always right-aligned in tables.
++
++### Palette
++| Role | Name | Hex | Use |
++|------|------|------|-----|
++| Primary ink | Obsidian | `#0A0A0B` | Everything is on this, or out of this |
++| Primary light | Bone | `#EDE6D6` | Warm off-white, never pure `#FFF` |
++| Accent | Peacock | `#0E3B43` | The mark, primary buttons |
++| Supporting | Stone | `#8A8276` | Secondary text, dividers |
++| Alert | Oxblood | `#5B1F1F` | Losses, destructive actions |
++
++---
++
++## Concept 03 — **The Aperture**
++
++*The most contemporary. Best if Fintrest wants to sit next to Linear, Raycast, and Notion on a designer's home screen. Most "Gen-Z premium."*
++
++### The idea
++The mark is a stylized camera-aperture — not fully open, not fully closed — built from 4 or 5 identical geometric blades around a center void. It reads as a lens, an eye, or a quiet pinwheel depending on how long you look. The metaphor is **attention**: Fintrest isn't selling you more data, it's sharpening your focus on the few numbers that actually matter. "Smart insights" visualized as a mechanical act of seeing.
++
++### Why it's intelligent, not obvious
++An aperture is a tool for *controlling how much light gets in* — exactly what a good personal-finance app does with information. It's borrowed from the language of premium photography brands (Leica, Hasselblad) rather than finance, which makes it sit in an unusual shelf. Rotational symmetry also means it animates beautifully on splash screens and loading states — the blades can open/close as a loading indicator without feeling like a spinner.
++
++### Typography
++- **Wordmark:** Neue Haas Grotesk Display, weight 55 Roman, lowercase "fintrest," -2% tracking. The quietest of the three. Pure Apple/Linear energy.
++- **UI body:** Neue Haas Grotesk Text, 16px default.
++- **Numbers:** JetBrains Mono or Berkeley Mono — mono for readouts gives a "terminal of your money" feel that Gen Z reads as trustworthy (think Mercury, Copilot).
++
++### Palette
++| Role | Name | Hex | Use |
++|------|------|------|-----|
++| Primary ink | Carbon | `#0F0F10` | Dark-mode default background |
++| Primary light | Pearl | `#FAFAF7` | Light-mode surfaces |
++| Accent | Evergreen | `#1F5C46` | The mark, CTAs — a deep, *considered* green (not Robinhood, not crypto) |
++| Supporting | Mist | `#A6ADB4` | Secondary text |
++| Highlight | Bone White | `#F2EFE6` | Hover states, inner glow |
++
++---
++
++## App Icon — The Most Important Artifact
++
++*Tested against the Gen-Z iPhone home screen, not against the App Store.*
++
++The icons have to survive next to Spotify, Instagram, and Apple's own apps at 60×60px. Rules I'm designing to:
++
++1. **One dominant form. No wordmark, no two-letter monogram.** (Cash App, X, Threads — all won by committing to one shape.)
++2. **A contained gradient, not a flat fill.** Pure flat looks cheap at small sizes; an over-gradient looks crypto. The target is a *whisper* of depth — like a spot of light hitting a ceramic surface.
++3. **Dark-backgrounded icons always beat light ones on a busy home screen.** They read as premium, and they let the accent color pop.
++
++### Concept 01 — Crest icon
++Vault gold crest mark, centered, on a midnight slate background with a subtle radial vignette (as if lit from the top-left by a single window). The gold has a faint brushed-metal micro-texture — invisible at a glance, adds richness at 3× retina. Feels like the watch face of a mechanical chronograph.
++
++### Concept 02 — Ledger Line icon
++Obsidian background, bone-colored ledger mark, centered, sized at ~55% of the icon. A second, almost-imperceptible bone line runs edge-to-edge behind the mark, three pixels thick — the "page" the ledger is written on. Extreme restraint. Looks like a page from a private-bank statement.
++
++### Concept 03 — Aperture icon
++Near-black (`#0F0F10`) background with a faint inner glow of evergreen behind the aperture — the impression that there's light on the far side of the lens. The aperture blades are done in Pearl `#FAFAF7`, each blade with a 1° inward bevel so they catch shape. At small sizes it reads as a flower or an eye; at large sizes it resolves as a lens. Animated app-open state: blades pull open by 15° in a 300ms ease-out.
++
++### My pick for the icon
++If Fintrest wants to own a shelf for 10 years, **Concept 02 (Ledger Line)**. If it wants to be loved by designers in year one, **Concept 03 (Aperture)**. Concept 01 is the safer middle.
++
++---
++
++## Brand Direction (Visual Identity)
++
++### UI vibe
++- **Dark mode first.** Set the product against Carbon/Obsidian by default — Gen-Z finance apps that feel like Linear and Arc beat the ones that feel like Mint. Light mode should exist but feel like the "print version" of the dark mode.
++- **Generous whitespace** — Apple-grade, 24-32px gutters on mobile. Money apps that cram data feel panicked; Fintrest should feel like it knows something you don't.
++- **Numbers as heroes.** Every screen has one number 2-3× larger than anything else on it. That number is always tabular-figure monospace. Everything else is small, calm, secondary.
++- **Serif accent labels.** Section labels ("Portfolio," "This Week," "Insights") set in a serif, small-caps, with 100-200 letterspacing, sitting above sans-serif body. Moves the product an entire tier upmarket for almost zero effort.
++- **No illustrations of people, no emoji, no confetti.** Moments of delight come from *motion and sound*, not color explosions. Think the "click" of an AirPods case.
++
++### Motion
++- Default easing: `cubic-bezier(0.4, 0, 0.2, 1)` but on the slow side (280-320ms).
++- Numbers animate on change — a quick odometer roll for balance changes.
++- No bouncy physics. Nothing should spring.
++
++### Gradients (use sparingly)
++- **Halo gradient** for hero cards: radial, accent color at 20% opacity → transparent, origin off-canvas top-right. Gives cards a "lit from somewhere" quality without looking like a wallpaper.
++- **No full-screen gradients ever.** That is the #1 tell of a crypto app.
++
++### Photography / imagery
++- If you use imagery at all: black-and-white editorial stills, shot in natural light. Objects over people. A single coffee cup on a wooden desk beats a stock photo of a smiling person every time.
++- Better: **no photography, just typography and data**, like Mercury's site.
++
++---
++
++## Design Style References (the shelf Fintrest belongs on)
++
++| Reference | What to borrow | What to *not* borrow |
++|-----------|----------------|----------------------|
++| **Mercury** | Dark UI, serif section labels, tabular numbers, the quiet confidence | Their banking-specific copy voice |
++| **Copilot.money** | Monochrome palette with one accent, category pills, respect for whitespace | They are a bit too pastel — go darker |
++| **Monarch Money** | Calm chart treatment, hierarchy of numbers | They over-rely on gradient color on charts |
++| **Stripe** | The restraint, the motion, the way they treat code & numbers as beautiful | They're B2B; you need more warmth |
++| **Linear** | The monospace-adjacent number treatment, command-K everywhere vibe | Their icon system is extremely them — don't copy |
++| **Rally.co** | Editorial serif + sans pairing, premium feel without heritage-bank stuffiness | Their photography is expensive; you can skip it |
++| **Anthropic / Are.na** | Serif in an AI/tech context | Their palettes are very specific — take the principle not the pixels |
++
++Do **not** look at: Robinhood, eToro, any "coin" branded product, any neo-bank from 2019, any fintech using purple gradients.
++
++---
++
++## What I'd Ship First
++
++1. **Pick Concept 02 or 03.** Concept 01 is beautiful but the serif wordmark costs you in the App Store listing where you're competing for a tap.
++2. **Build the app icon before the full identity.** The icon is 70% of first impressions; everything else can iterate.
++3. **Commit to dark mode and tabular numbers in the first build.** Those two decisions alone will make Fintrest look two funding rounds ahead of where it actually is.
++4. **Skip the brand film and the hero illustrations for v1.** A static site with the wordmark, the icon, and one animated number hitting a new high is more powerful than an 'explainer' video.
++
++---
++
++*Prepared for Fintrest — v0.1 brand direction.*
+diff --git a/fintrest-build-spec.md b/fintrest-build-spec.md
+new file mode 100644
+index 0000000..fd4c122
+--- /dev/null
++++ b/fintrest-build-spec.md
+@@ -0,0 +1,743 @@
++# Fintrest — Build-Ready UI Spec v1.0
++
++*Engineering handoff. Everything below is implementable as-is. Source of truth for design decisions: `fintrest-product-design.md` and `fintrest-aperture-spec.md`.*
++
++**Assumed stack:** React Native (iOS-first) + TypeScript. Tokens also provided as CSS custom properties for the marketing site.
++
++---
++
++## 1. Screen-by-Screen UI Breakdown
++
++### 1.1 Home Dashboard
++
++```
++HomeScreen
++├── SafeAreaView (bg: carbon)
++├── ScrollView (contentInsets: top 0, bottom 24)
++│   │
++│   ├── Section: Header  ────────────────────── pt: 32, ph: 24
++│   │   ├── Text.SmallCaps "OVERVIEW"          mb: 8
++│   │   └── Text.Body "Good morning, Ayush"    color: mist, size: 14
++│   │
++│   ├── Section: Hero  ────────────────────── pt: 48, ph: 24
++│   │   ├── Odometer                           size: 56, color: pearl
++│   │   │   props: value=128402.18, currency="USD"
++│   │   └── Text.Mono "+$412.80 today"         size: 14, color: pearl, mt: 8
++│   │
++│   ├── Section: Sparkline  ────────────────── pt: 32, ph: 24
++│   │   └── Sparkline                          height: 120
++│   │       props: data=[90 days], stroke=pearl, strokeWidth=1.5
++│   │
++│   ├── Section: Accounts  ────────────────── pt: 48, ph: 24
++│   │   ├── Text.SmallCaps "ACCOUNTS"          mb: 16
++│   │   └── HorizontalScrollView (gap: 12)
++│   │       └── AccountCard × n                w: 200, h: 140
++│   │
++│   ├── Section: Activity  ────────────────── pt: 48, ph: 24
++│   │   ├── Row (align: space-between)         mb: 16
++│   │   │   ├── Text.SmallCaps "RECENT ACTIVITY"
++│   │   │   └── Text.Link "See all"            onPress → ActivityScreen
++│   │   └── ListRow.Transaction × 3            height: 64 each
++│   │
++│   └── Bottom spacer                           h: 96 (clears tab bar)
++│
++└── TabBar (floating, bottom)                   h: 64
++```
++
++**Typography map:**
++| Element | Family | Size | Weight | Color |
++|---------|--------|------|--------|-------|
++| Section labels | GT Super | 10 | Regular small-caps, ls+200 | mist |
++| Greeting | NHG | 14 | Regular | mist |
++| Hero (balance) | JetBrains Mono | 56 | Regular, tabular | pearl |
++| Hero delta | JetBrains Mono | 14 | Regular, tabular | pearl |
++| Account name | NHG | 13 | Regular | mist |
++| Account balance | JetBrains Mono | 22 | Regular, tabular | pearl |
++| "See all" link | NHG | 13 | Medium, underline | pearl |
++
++**Alignment:**
++- All text left-aligned by default
++- Amounts right-aligned in rows and columns (always tabular-nums)
++- Hero number is *left-aligned to screen padding*, not centered
++
++---
++
++### 1.2 Portfolio
++
++```
++PortfolioScreen
++├── SafeAreaView
++├── ScrollView
++│   │
++│   ├── Section: Hero  ────────────────────── pt: 32, ph: 24
++│   │   ├── Text.SmallCaps "PORTFOLIO"        mb: 8
++│   │   ├── Odometer                           size: 52, color: pearl
++│   │   └── DeltaStack                         mt: 8
++│   │       ├── Text.Mono line 1              size: 14, color: pearl
++│   │       └── Text.Mono line 2              size: 11, color: mist
++│   │
++│   ├── Section: Time range  ──────────────── pt: 24, ph: 24
++│   │   └── SegmentedToggle.Text               h: 32, gap: 16
++│   │       items: ["1D","1W","1M","1Y","ALL"]
++│   │       type: text-only (no pill bg)
++│   │
++│   ├── Section: Chart  ────────────────────── pt: 16, ph: 0
++│   │   └── Chart                              height: 240
++│   │       props: line=pearl 1.5px, halo=evergreen (see 4.2)
++│   │
++│   ├── Section: Allocation  ──────────────── pt: 32, ph: 24
++│   │   ├── Text.SmallCaps "ALLOCATION"        mb: 12
++│   │   └── AllocationBar                      h: 8, mb: 16
++│   │   └── Row (wrap, gap: 16)                labels below bar
++│   │       └── Text.SmallCaps × categories    size: 9
++│   │
++│   ├── Section: Holdings  ─────────────────── pt: 48, ph: 24
++│   │   ├── Text.SmallCaps "HOLDINGS"          mb: 16
++│   │   └── ListRow.Holding × n                h: 64
++│   │
++│   ├── Text.Link "+ Add a position"           alignSelf: center, pt: 32
++│   └── Bottom spacer                           h: 96
++```
++
++**Typography map:** identical pattern to Home (section labels = GT Super small-caps, numbers = Mono, body = NHG).
++
++---
++
++### 1.3 Insights
++
++```
++InsightsScreen
++├── SafeAreaView
++├── ScrollView (ph: 24)
++│   │
++│   ├── Section: Week header  ─────────────── pt: 32
++│   │   ├── Text.SmallCaps "THIS WEEK"         size: 10, color: mist, mb: 4
++│   │   └── Text.SmallCaps "Week of April 20"  size: 12, color: mist
++│   │
++│   ├── Section: Insight  ──────────────────── pt: 32
++│   │   └── EditorialBlock                     maxWidth: 560
++│   │       font: GT Super 18, lineHeight: 1.5, color: pearl
++│   │       inline numbers rendered as Text.Mono 18
++│   │
++│   ├── Section: Signals  ──────────────────── pt: 32
++│   │   └── Row (wrap, gap: 24)
++│   │       └── SignalPill × 3                 font: GT Super small-caps 10, underline
++│   │
++│   ├── Section: Pinned  ────────────────────── pt: 48
++│   │   ├── Text.SmallCaps "PINNED"            mb: 16
++│   │   └── HorizontalScrollView (gap: 12)
++│   │       └── InsightCard × 3–5              w: 280, h: 180, p: 24
++│   │           ├── Text.Body                  serif 15, color: pearl
++│   │           └── V3BladeGlyph                pos: top-right, size: 16
++│   │
++│   └── Bottom spacer                           h: 96
++│
++└── AskBar (sticky bottom, above tab bar)      h: 56, bg: carbon-lifted
++    └── TextInput "Ask Fintrest something"
++```
++
++---
++
++### 1.4 Activity
++
++```
++ActivityScreen
++├── SafeAreaView
++├── Header  ────────────────────────────────── pt: 32, ph: 24
++│   ├── Text.SmallCaps "ACTIVITY"              mb: 16
++│   ├── Input.Search                           h: 48, mb: 12
++│   │   placeholder: "Search transactions"
++│   └── HorizontalScrollView (gap: 16)
++│       └── Chip.Filter × n                    active state: pearl + underline
++│
++├── FlatList  ───────────────────────────────── ph: 24, pt: 24
++│   ├── sectionHeader: DateGroupHeader          h: 32, sticky
++│   │   Text.SmallCaps, size: 10, color: mist
++│   └── renderItem: ListRow.Transaction         h: 64, gap: 4 between rows
++│
++└── TabBar
++```
++
++**Transaction row:**
++```
++ListRow.Transaction (h: 64)
++├── Left (flex: 1)
++│   ├── Row (align: center, gap: 8)
++│   │   ├── Icon.Category (optional)           size: 12, color: mist
++│   │   └── Text.SmallCaps categoryLabel       size: 9, color: mist
++│   └── Text.Body merchant                     size: 15, color: pearl, mt: 2
++└── Right
++    └── Text.Mono amount                       size: 15, color: pearl, align: right, tabular
++```
++
++**Open behavior:** on press, row expands in place via Aperture Iris Reveal (see §4.3). Detail view replaces list contents.
++
++---
++
++### 1.5 Onboarding
++
++```
++OnboardingStack (SwiftUI-style step container)
++│
++├── Step 01: Welcome  ─────────────────────── bg: carbon, full-screen
++│   ├── Aperture.V1 (centered)                 y: 40%, size: 120, animates open on mount
++│   ├── Text.Wordmark "fintrest"               NHG 28, pearl, mt: 24
++│   ├── Text.Display "Grow what you have. Quietly."  GT Super 24, pearl, mt: 48
++│   └── Button.Primary "Get started"           pos: bottom, mb: 48 from safe area
++│
++├── Step 02: Sign In  ───────────────────────
++│   ├── Text.SmallCaps "STEP 1"                 pt: 32, ph: 24, mb: 8
++│   ├── Text.Display "Sign in"                  GT Super 32, pearl, mb: 48
++│   ├── Button.Outline "Continue with Apple"    h: 48, mb: 16
++│   ├── Button.Outline "Continue with Google"   h: 48, mb: 16
++│   ├── Button.Outline "Continue with email"    h: 48
++│   └── Text.Legal "Privacy and terms"          NHG 11, mist, underline, bottom
++│
++├── Step 03: Connect  ───────────────────────
++│   ├── Text.SmallCaps "STEP 2"                 pt: 32, ph: 24, mb: 8
++│   ├── Text.Display "Let's read the last 90 days."
++│   │                                           GT Super 32, pearl, mb: 24
++│   ├── Text.Body explanation                   NHG 15, mist, mb: 48
++│   ├── Button.Primary "Connect an account"     mb: 16
++│   └── Text.Link "Skip for now"                pearl, underline
++│
++├── Step 04: The Read  ────────────────────── V2 feature — omit for MVP
++│   └── Aperture.V1 rotates continuously while processing
++│       text appears word-by-word via stagger
++│
++└── Step 05: First Insight  ────────────────── V2 feature — omit for MVP
++```
++
++**Step transitions:** aperture-close (200ms) → black frame (40ms) → aperture-open on next (240ms). Total 480ms between steps.
++
++---
++
++## 2. Component Library
++
++### 2.1 Button
++
++```ts
++type ButtonProps = {
++  variant: 'primary' | 'secondary' | 'tertiary' | 'destructive';
++  label: string;
++  onPress: () => void;
++  disabled?: boolean;
++  loading?: boolean;
++  size?: 'default' | 'small';  // default h:48, small h:36
++  fullWidth?: boolean;
++};
++```
++
++| Variant | Background | Border | Text color | Use case |
++|---------|-----------|--------|-----------|----------|
++| primary | `evergreen` | none | `pearl` | 1 per screen max |
++| secondary | transparent | `1px pearl` | `pearl` | Stacked options |
++| tertiary | transparent | none | `pearl` (underline) | Inline text links |
++| destructive | transparent | `1px ember` | `ember` | Delete, sign out |
++
++**States:**
++
++| State | Style change |
++|-------|--------------|
++| default | base styles |
++| pressed | scale 0.98, duration 80ms, ease-out |
++| disabled | opacity 0.35, pointer-events none |
++| loading | label → Spinner (V2 aperture, 16px), rest unchanged |
++
++**Common styles (all variants):**
++```
++height: 48
++paddingHorizontal: 24
++borderRadius: 12
++fontFamily: NHG-Medium
++fontSize: 15
++letterSpacing: -0.5%
++textAlign: center
++```
++
++---
++
++### 2.2 Card
++
++```ts
++type CardProps = {
++  variant?: 'default' | 'emphasized' | 'interactive';
++  children: ReactNode;
++  onPress?: () => void;  // only interactive
++  padding?: number;  // default 24
++};
++```
++
++| Variant | Style |
++|---------|-------|
++| default | bg: `carbon-lifted`, border: `1px carbon-border`, radius: 16, p: 24 |
++| emphasized | default + borderLeft: `2px evergreen`, paddingLeft: 22 |
++| interactive | default + `:pressed` state: borderColor → `pearl @ 20%`, 160ms ease-out |
++
++**No shadow. No hover state. Mobile-first.**
++
++---
++
++### 2.3 ListRow
++
++```ts
++type ListRowProps = {
++  variant: 'transaction' | 'holding' | 'account';
++  leading?: ReactNode;
++  title: string;
++  subtitle?: string;
++  trailing?: string;  // Mono, right-aligned
++  trailingSubtitle?: string;  // Mono, right-aligned, size 11
++  onPress?: () => void;
++};
++```
++
++**Shared rules (all variants):**
++- height: 64
++- paddingHorizontal: 0 (screen owns horizontal padding)
++- flex row, justify: space-between, align: center
++- divider: 1px `carbon-border` below each row (last row omits divider)
++
++| Variant | Leading | Title style | Subtitle style | Trailing style |
++|---------|---------|-------------|----------------|----------------|
++| transaction | optional Icon.Category | NHG 15 pearl | SmallCaps 9 mist | Mono 15 pearl |
++| holding | — | NHG 15 pearl | Mono 11 mist (ticker) | Mono 15 pearl |
++| account | Institution mark 24px | NHG 13 mist | — | Mono 22 pearl |
++
++---
++
++### 2.4 Input
++
++```ts
++type InputProps = {
++  variant: 'text' | 'search' | 'amount';
++  value: string;
++  onChange: (v: string) => void;
++  placeholder?: string;
++  disabled?: boolean;
++  error?: boolean;
++};
++```
++
++**Shared:**
++- height: 48
++- paddingHorizontal: 16
++- backgroundColor: `carbon-lifted`
++- borderRadius: 12
++- fontFamily (text/search): NHG-Regular 14
++- fontFamily (amount): JetBrainsMono-Regular 16
++- placeholder color: `mist`
++- value color: `pearl`
++
++| Variant | Notable |
++|---------|---------|
++| text | Default |
++| search | Same as text. No leading icon. |
++| amount | Mono font, right-aligned, prefix "$" static |
++
++| State | Style |
++|-------|-------|
++| default | as above |
++| focused | border: `2px evergreen`, inset (no layout shift) |
++| error | border: `2px ember` |
++| disabled | opacity 0.35 |
++
++---
++
++### 2.5 Chip
++
++```ts
++type ChipProps = {
++  variant: 'filter' | 'category';
++  label: string;
++  active?: boolean;
++  onPress?: () => void;
++};
++```
++
++**Filter chip (Activity screen):**
++- No background
++- font: GT Super small-caps 10, letter-spacing +200
++- color: `mist` default, `pearl` when active
++- active adds: `borderBottom: 1px pearl`, `paddingBottom: 2`
++- height: 24
++- paddingHorizontal: 0
++- gap between chips: 16
++
++**Category chip (inline under merchant):**
++- No background
++- font: GT Super small-caps 9
++- color: `mist`
++- non-interactive (label only)
++
++---
++
++### 2.6 TabBar
++
++```ts
++type TabBarProps = {
++  activeTab: 'home' | 'activity';  // MVP: only 2 tabs
++  onChange: (tab) => void;
++};
++```
++
++**Structure:**
++- height: 64 + bottom safe area
++- backgroundColor: `carbon` with 1px top border `carbon-border`
++- flex row, justify: space-around, align: center
++- per tab:
++  - V2 Aperture (20px) when Home active; Phosphor `List` (20px) for Activity
++  - Inactive: `mist`
++  - Active: `pearl`
++  - Label below icon: NHG 10, mist/pearl, mt: 4
++
++**V1 MVP has exactly 2 tabs: Home, Activity.** Portfolio and Insights tabs land in V2.
++
++---
++
++## 3. Developer Tokens
++
++### 3.1 `tokens.ts` (React Native + web-compatible)
++
++```ts
++export const colors = {
++  // Surfaces
++  carbon:         '#0F0F10',
++  carbonLifted:   '#14181A',
++  carbonBorder:   '#1C1F22',
++  obsidian:       '#0A0B0C',
++
++  // Text & marks
++  pearl:          '#FAFAF7',
++  mist:           '#A6ADB4',
++  fog:            '#6B7178',
++
++  // Accent
++  evergreen:      '#1F5C46',
++  evergreenGlow:  'rgba(31, 92, 70, 0.35)',
++
++  // Alert
++  ember:          '#B24A2A',
++
++  // Light mode (V3+)
++  bone:           '#EDE6D6',
++  boneLifted:     '#F5F1EA',
++  boneBorder:     '#E3DBC8',
++} as const;
++
++export const spacing = {
++  s1: 4,
++  s2: 8,
++  s3: 12,
++  s4: 16,
++  s5: 24,
++  s6: 32,
++  s7: 48,
++  s8: 64,
++  s9: 96,
++  s10: 128,
++} as const;
++
++export const radii = {
++  sm: 8,
++  md: 12,    // buttons, inputs
++  lg: 16,    // cards
++  pill: 999,
++  icon: 229, // iOS app-icon corner radius on 1024
++} as const;
++
++export const typography = {
++  fontFamily: {
++    serif:  'GTSuperDisplay-Regular',
++    sans:   'NeueHaasGroteskDisplay-Regular',
++    sansMd: 'NeueHaasGroteskDisplay-Medium',
++    mono:   'JetBrainsMono-Regular',
++  },
++  size: {
++    // Display
++    hero:       56,
++    heroSm:     52,
++    display:    32,
++    displaySm:  24,
++    // Body
++    h1:         18,
++    body:       15,
++    bodySm:     14,
++    bodyXs:     13,
++    caption:    12,
++    label:      11,
++    micro:      10,
++    nano:       9,
++  },
++  lineHeight: {
++    tight:      1.1,
++    numbers:    1.2,
++    body:       1.5,
++    editorial:  1.45,
++  },
++  letterSpacing: {
++    tight:      -0.5,    // percent, applied via platform-specific API
++    smallCaps:  200,     // thousandths of an em
++  },
++} as const;
++
++export const motion = {
++  durations: {
++    micro:    80,
++    tap:      160,
++    short:    240,
++    medium:   280,
++    long:     480,
++    slow:     800,
++  },
++  easings: {
++    standard:   [0.4, 0, 0.2, 1],
++    quintOut:   [0.22, 1, 0.36, 1],
++    cubicInOut: [0.65, 0, 0.35, 1],
++  },
++} as const;
++
++export const elevation = {
++  none: {
++    // No shadows in Fintrest. Elevation = carbonLifted + 1px border.
++    // This object exists to lock it explicitly for reviewers.
++  },
++} as const;
++```
++
++### 3.2 CSS custom properties (marketing site)
++
++```css
++:root {
++  /* surfaces */
++  --carbon: #0F0F10;
++  --carbon-lifted: #14181A;
++  --carbon-border: #1C1F22;
++  --obsidian: #0A0B0C;
++
++  /* text */
++  --pearl: #FAFAF7;
++  --mist: #A6ADB4;
++  --fog: #6B7178;
++
++  /* accent */
++  --evergreen: #1F5C46;
++  --evergreen-glow: rgba(31, 92, 70, 0.35);
++  --ember: #B24A2A;
++
++  /* spacing */
++  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
++  --s-5: 24px; --s-6: 32px; --s-7: 48px; --s-8: 64px;
++  --s-9: 96px; --s-10: 128px;
++
++  /* radii */
++  --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
++
++  /* motion */
++  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
++  --ease-quint-out: cubic-bezier(0.22, 1, 0.36, 1);
++  --ease-cubic-inout: cubic-bezier(0.65, 0, 0.35, 1);
++
++  --d-micro: 80ms; --d-tap: 160ms; --d-short: 240ms;
++  --d-medium: 280ms; --d-long: 480ms; --d-slow: 800ms;
++}
++```
++
++---
++
++## 4. Interaction Logic
++
++### 4.1 Balance Odometer
++
++- **Trigger:** `value` prop changes on `<Odometer>` component.
++- **Algorithm:**
++  1. Format old and new values with same digit count (pad with spaces).
++  2. Diff digit-by-digit, right to left.
++  3. For each changed digit at index `i` (right-indexed), start animation at `t = i × 40ms`.
++  4. Each digit animates through intermediate values (0→9 wheel), resolving at final value after **280ms**, ease-out-quint.
++- **Implementation:** single vertically-scrolling column per digit. Column height = `lineHeight × 10`. Animate `translateY` to target offset.
++- **Edge cases:**
++  - Digit count grows (e.g. $999 → $1,042): new leading digit fades in over first 120ms of its scroll; existing digits animate normally.
++  - Digit count shrinks: trailing digits fade out over last 120ms.
++  - Decimal separator and `$` are static; do not animate.
++  - If delta > 50% of current value (likely data error): skip animation, cut to new value.
++  - Rapid successive updates (< 300ms apart): cancel in-flight animation, start new one from current position.
++
++### 4.2 Chart Interaction
++
++- **States:** `idle` (no interaction), `hover` (crosshair visible, passive), `scrubbing` (user dragging).
++- **Triggers:**
++  - Single tap → enter `hover` at tap point, hold for 2000ms, auto-exit to `idle`.
++  - Long-press (300ms) → enter `scrubbing`; track finger horizontally; on release → `idle`.
++- **Crosshair rendering:**
++  - 1px vertical line `pearl @ 30%`
++  - Dot at line-chart intersection: 6px circle, `pearl`
++  - Floating label above point: Mono 12, `pearl`, shows value. Positioned to avoid screen edges.
++- **Haptic:** `.soft` on entering `scrubbing`, nothing during scrub (would be jittery).
++- **Evergreen halo:**
++  - Rendered as a `LinearGradient` mask below the chart line, anchored bottom.
++  - Opacity = `Math.min(0.40, magnitude × 0.01)` where `magnitude` is % gain over range.
++  - Opacity tweens over 600ms when data refreshes.
++  - Losses: no halo at all. Do not show a red/ember version.
++- **Edge cases:**
++  - No data: show `Text.Body "Not enough history yet." mist`, omit chart entirely.
++  - Single data point: render dot only, no line.
++  - All-flat data: render flat line at midheight, halo opacity 0.
++
++### 4.3 Aperture Transitions
++
++Three separate uses of the aperture in motion:
++
++**(a) App launch** — see `fintrest-aperture-spec.md §4`, 480ms total sequence.
++
++**(b) Onboarding step transition:**
++- On `next()`: aperture-close on current screen (200ms, ease-in-quint) → 40ms black hold → aperture-open on next (240ms, ease-out-quint).
++- Interruption: if user taps during close, skip remainder, jump to open of next.
++- Edge case: pop gesture (back-swipe) during transition → cancel, restore current.
++
++**(c) Transaction iris reveal (V2 — omit for MVP):**
++- Trigger: press on `ListRow.Transaction`.
++- Expand circular mask from tap point `(x, y)` at **480 px/sec** radially.
++- Detail view is the content revealed by the mask.
++- At 180ms, render V1 aperture at 20% opacity centered at `(x, y)`, scale 0.4, fade to 0 over next 180ms.
++- Easing: `ease-in-out-cubic`.
++- Close: reverse, iris collapses to `(x, y)`. 240ms.
++- Edge case: if user taps another row during expansion, cancel first, start second.
++
++### 4.4 Focus Mode (long-press on any Mono number) — V2
++
++- **Trigger:** long-press any `<Text.Mono>` with `focusable` prop = true for 800ms.
++- **On trigger:**
++  - Haptic `.soft`.
++  - Rest of screen (everything except target) animates opacity → 0.4 over 200ms.
++  - Target scales to 1.1× with 1px `evergreen` underline appearing.
++  - `FocusPanel` (bottom sheet, `carbonLifted` bg, radius 16) slides up from bottom, 320ms, ease-out-quint.
++- **While held:** panel remains open. Content inside panel updates if user drags to a different focusable number.
++- **On release:**
++  - Haptic `.soft`.
++  - Panel slides down (240ms).
++  - Screen opacity returns to 1.0 (200ms).
++  - Target scales back to 1.0.
++- **Edge cases:**
++  - Finger lifts off target but stays on screen mid-hold: still trigger if 800ms elapsed.
++  - Release before 800ms: cancel, no haptic, no panel.
++  - Panel content still loading: show V2 aperture loader (rotating, 2.4s/rev) in panel.
++  - User scrolls during hold: cancel.
++
++---
++
++## 5. MVP Scope (ruthless cut)
++
++### V1 — Launch (target: 8 weeks)
++
++**Ship:**
++
++| Area | Included |
++|------|----------|
++| Screens | Onboarding (Steps 1–3), Home, Activity, Activity Detail |
++| Navigation | 2-tab TabBar: Home, Activity |
++| Design system | All tokens, all 6 components (Button, Card, ListRow, Input, Chip, TabBar) |
++| Motion | App launch aperture (§4 of aperture spec), Odometer (§4.1), Onboarding step transitions (§4.3b) |
++| Data | Plaid connection for banks (no brokerage yet) |
++| Mode | Dark mode only |
++| Platform | iOS only (React Native build) |
++
++**Home screen V1 cut:**
++- Header ✅
++- Hero balance + delta ✅
++- Sparkline ❌ (defer — requires 90 days of stored history)
++- Accounts strip ✅
++- Today's Insight card ❌ (defer — requires AI pipeline)
++- Recent Activity (3 rows) ✅
++
++**Activity screen V1 cut:**
++- Search ✅
++- Filter chips ✅ (categories + date only; account filter in V2)
++- Date-grouped list ✅
++- Transaction tap → detail (modal, NOT aperture iris) ✅
++- Aperture iris reveal ❌ (defer)
++
++**Onboarding V1 cut:**
++- Step 1 Welcome ✅
++- Step 2 Sign In (Apple + email only; Google in V2) ✅
++- Step 3 Connect Plaid ✅
++- Step 4 The Read ❌ (defer — requires AI)
++- Step 5 First Insight + Goal ❌ (defer)
++- Replace post-Plaid with: brief "Setting up…" state with V2 aperture rotating, then land on Home.
++
++**Components V1:**
++- Button (primary, secondary only — tertiary/destructive in V2)
++- Card (default + emphasized only — interactive in V2)
++- ListRow (transaction + account — holding in V2)
++- Input (text + search — amount in V2)
++- Chip (filter only — category in V2)
++- TabBar (2 items)
++- Odometer
++- Aperture.V1 (launch only)
++- Aperture.V2 (loading spinner)
++
++---
++
++### V2 — Round two (target: +8 weeks)
++
++- Portfolio screen + brokerage integration
++- Insights screen + AI pipeline
++- Onboarding Step 4 "The Read"
++- Onboarding Step 5 Goal setup
++- Sparkline on Home
++- Today's Insight card on Home
++- Inverted chart halo (§4.2)
++- Transaction iris reveal (§4.3c)
++- Focus mode (§4.4)
++- Haptic weight system
++- Weekly Opening notification
++- Tertiary + destructive Button variants
++- Interactive Card variant
++- Amount Input variant
++- Category Chip variant
++- Google sign-in
++- TabBar → 4 items (Home, Portfolio, Insights, Activity)
++- V3 blade glyph in InsightCard
++
++---
++
++### V3+ — Polish & expansion
++
++- Light mode
++- Apple Watch complication (V3 blade)
++- iOS 18 tinted icon variant
++- Android build
++- V3 blade uses in account tiers
++- Optional shutter sound on app launch
++
++---
++
++### What we are NOT building (ever, or until proven otherwise)
++
++- Social features (sharing, leaderboards, friends)
++- Streaks, badges, achievements
++- In-app chat / support bubble
++- Candlestick charts
++- Crypto trading
++- Credit score features (if added, must pass the Fintrest filter — no gamification)
++- Referral rewards with confetti
++
++---
++
++## 6. Engineering Checklist (day-1 setup)
++
++- [ ] RN project initialized with TypeScript strict mode
++- [ ] `tokens.ts` committed; design-token linter rule added (ESLint rule: reject hardcoded hex, reject hardcoded px values outside spacing scale)
++- [ ] Fonts licensed + bundled: GT Super Display, Neue Haas Grotesk Display (Regular + Medium), JetBrains Mono
++- [ ] Font preload via `expo-font` or `react-native-asset` to prevent FOUT on cold launch
++- [ ] Aperture SVGs imported as RN components via `react-native-svg` (V1, V2, V3 from `fintrest-aperture-marks.svg`)
++- [ ] Haptics wrapper module created (even if unused in V1 — land the API)
++- [ ] Centralized `motion.ts` with easing arrays and duration constants
++- [ ] Dark status bar enforced at app root; no per-screen overrides allowed
++- [ ] Storybook or equivalent "ShowcaseScreen" rendering all components in all states
++- [ ] Odometer tested at 60fps on iPhone 12 (the floor device)
++- [ ] App icon assets exported at 9 sizes per `fintrest-aperture-spec.md §3.7`
++
++---
++
++*v1.0 — locked for V1 build kickoff. File bugs against this doc, do not fork.*
+diff --git a/fintrest-landing-spec.md b/fintrest-landing-spec.md
+new file mode 100644
+index 0000000..9edbe17
+--- /dev/null
++++ b/fintrest-landing-spec.md
+@@ -0,0 +1,457 @@
++# Fintrest — Marketing Landing Page Spec v1.0
++
++*The public-facing surface of the brand. Single-page, long-scroll, pre-launch waitlist. Deployable as a static site to Vercel/Netlify in under an hour. Paired with a working HTML prototype: `fintrest-landing.html`.*
++
++---
++
++## 1. Strategy (30-second summary)
++
++**Goal:** Collect qualified waitlist signups from Gen Z and young professionals. Secondary: convince investors the brand and team are serious.
++
++**Constraints:**
++- No product to demo yet (pre-launch)
++- No App Store link yet
++- One primary CTA: **Join the waitlist**
++- Must load in under 1 second, score ≥95 on Lighthouse, be inarguably designed
++
++**What this page is not:**
++- Not a sign-up flow. Not a product tour. Not a feature list.
++- No customer testimonials (we don't have customers).
++- No press logos ("As seen in…"). No social proof carousel.
++- No newsletter signup distinct from the waitlist.
++
++---
++
++## 2. Information Architecture (section order)
++
++Single long-scroll page, 6 sections, no nav links jumping to anchors, no hamburger menu, no secondary pages except legal.
++
++```
++01. Nav          (sticky, minimal)
++02. Hero         (aperture + thesis + waitlist CTA)
++03. The Thesis   (editorial prose, what Fintrest is)
++04. How it works (3 stacked steps)
++05. What you won't see  (anti-features — the voice statement)
++06. Waitlist     (second CTA, centered, large)
++07. Footer       (legal, contact)
++```
++
++Legal pages are separate: `/privacy`, `/terms`. No other URLs in V1.
++
++---
++
++## 3. Section-by-Section Spec
++
++### 3.1 Nav (sticky top)
++
++- Height: 64px mobile, 80px desktop
++- Background: `carbon @ 0.85` with `backdrop-filter: blur(20px)` — becomes more opaque on scroll
++- Inside: flex row, space-between
++  - **Left:** `fintrest` wordmark in NHG Medium 18, Pearl, kerning -2%
++  - **Right:** Button `Join the waitlist` — Evergreen primary, 40px tall, 16px horizontal padding, 11 radius
++- Mobile: same, button shrinks to 36px and just reads `Waitlist`
++
++### 3.2 Hero
++
++- Height: 100vh minimum, 720px minimum (whichever is larger)
++- Centered vertically, left-aligned horizontally on desktop (`padding-left: 96px`), centered on mobile
++
++**Structure:**
++
++```
++Hero
++├── Aperture V1 mark (top, 80px high)
++│   └── plays launch animation on mount (matches aperture-spec §4)
++├── Thesis              Fraunces 72 (desktop) / 48 (mobile)
++│                       "Grow what you have. Quietly."
++├── Subhead             Inter 20 / 17, color Mist, max-width 480px
++│                       "A calm finance app that reads your accounts
++│                       and tells you what matters."
++└── Form inline
++    ├── Email input     (see 3.5 — same component as the bottom form)
++    └── Button "Join the waitlist" (primary)
++    └── Micro label     Inter 12 Mist: "Early access this summer. No spam, one email at launch."
++```
++
++**Background:** the same radial gradient from the app icon (§3.2 aperture-spec) — `#14181A` at center top, `#0A0B0C` at edges.
++
++**Motion:** aperture opens on page load. 80ms hold, 240ms open (quintOut). No parallax on scroll for V1 — keep it static and fast.
++
++### 3.3 The Thesis (editorial block)
++
++- Padding: 160px top/bottom desktop, 96px mobile
++- Max width: 720px, centered
++- Section label above: `About` in GT Super small-caps 11 Mist, letter-spacing +200
++- Body: **3 paragraphs** in Fraunces 22 (desktop) / 18 (mobile), Pearl, line-height 1.5
++
++**Copy (ship):**
++
++> Fintrest is a quieter kind of finance app. It doesn't ping you when your portfolio moves. It doesn't show green numbers to make you feel good about gains, or red ones to panic you about losses. It doesn't gamify your savings.
++>
++> It reads the last 90 days of your accounts, finds the patterns you'd miss, and tells you what matters in a single paragraph every Monday.
++>
++> That's the entire product. It's enough.
++
++**Pull quote (optional, below prose):**
++- Giant Fraunces 96 number: `$0`
++- Caption below in Mono 13 Mist: `monthly fee, forever`
++- Only add if product has committed to free-forever (business-model decision outside this spec)
++
++### 3.4 How it works (three stacked steps)
++
++Three blocks, vertically stacked, each with a number, a headline, a paragraph. No icons, no illustrations. Keep the editorial style from the thesis.
++
++- Padding between blocks: 96px desktop, 64px mobile
++- Each block: max-width 560px, centered
++
++**Block 01**
++- Number: `01` in Fraunces 96, Evergreen, margin-bottom 16
++- Headline: `Connect your accounts.` — Fraunces 32 Pearl
++- Body: `Fintrest connects to your bank, brokerage, and cards through Plaid. Your credentials stay between you and your bank — we never see them.` — Inter 17 Mist
++
++**Block 02**
++- Number: `02` Evergreen
++- Headline: `We read them.`
++- Body: `The last 90 days. Every transaction, every position, every movement. Fintrest looks for patterns humans miss — the small ones that compound.`
++
++**Block 03**
++- Number: `03` Evergreen
++- Headline: `You get one insight a week.`
++- Body: `Monday morning, a single paragraph. What changed, what it means, what (if anything) to do. Nothing more.`
++
++### 3.5 What you won't see (the anti-feature statement)
++
++This is the section that separates Fintrest from every other fintech landing page. It's where the brand earns trust by saying what it refuses to do.
++
++- Padding: 160px top/bottom
++- Max-width: 560px
++- Center-aligned
++
++**Structure:**
++
++```
++SmallCaps label:  "What you won't see"
++Heading:          "Fintrest is made of what it doesn't do."   (Fraunces 32)
++
++Two-column list on desktop, single column mobile:
++  ── No push notifications about your balance.
++  ── No streaks or savings challenges.
++  ── No green for gains, no red for losses.
++  ── No social features or leaderboards.
++  ── No referral bonuses or confetti.
++  ── No "AI-powered" anywhere.
++```
++
++Each list item: Inter 16 Pearl, with a 16px em-dash prefix `──` (horizontal bar in Mist), 12px padding between items.
++
++### 3.6 Waitlist (second CTA)
++
++- Padding: 160px top/bottom
++- Centered, full-width container, max inner-width 480px
++- Background: solid `carbon-lifted` (visually elevates this block)
++- Border: 1px `carbon-border` top and bottom only (not a card — full-width band)
++
++**Structure:**
++
++```
++Heading:      "Early access this summer." (Fraunces 32)
++Subhead:      "One email when Fintrest opens. No spam." (Inter 15 Mist)
++Spacer:       32px
++Form inline:
++  ├── Email input (h: 48, bg: carbon, border: 1px carbon-border)
++  └── Button "Join the waitlist"
++Success state (replaces form after submit):
++  "You're on the list." (Fraunces 24 Pearl, centered)
++```
++
++The form is the same component as the hero form. See §5.4.
++
++### 3.7 Footer
++
++- Padding: 48px top/bottom
++- Border-top: 1px `carbon-border`
++- Max-width: 1200px, padded 24px horizontal
++
++**Layout (desktop):** flex row, space-between.
++**Layout (mobile):** stacked, 24px gap.
++
++```
++Left:
++  fintrest wordmark (NHG Medium 16, Pearl)
++  © 2026 Fintrest  (Inter 12 Mist, mt: 8)
++
++Right (horizontal, gap: 32px, Inter 13 Mist, underline on hover):
++  Privacy · Terms · hello@fintrest.{tld}
++```
++
++No social icons. No "made with ❤" line. No language selector.
++
++---
++
++## 4. Design Tokens (web)
++
++Use the exact same CSS custom properties as `fintrest-build-spec.md §3.2`. Drop that block into the `:root` of the landing page stylesheet unchanged.
++
++**Fonts used on landing page** (in priority of what the engineer actually sources):
++
++| Token | Licensed (ideal) | Free fallback (prototype) |
++|-------|------------------|--------------------------|
++| Serif | GT Super Display | **Fraunces** (Google Fonts, weight 400 + 500) |
++| Sans | Neue Haas Grotesk Display | **Inter** (Google Fonts, weight 400 + 500 + 600) |
++| Mono | JetBrains Mono | JetBrains Mono (free) |
++
++For V1 prototype: ship with the Google Fonts. Swap to licensed GT Super + NHG once the product launches and has budget. The prototype on day one is indistinguishable at glance distance.
++
++Load pattern:
++
++```html
++<link rel="preconnect" href="https://fonts.googleapis.com">
++<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
++<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
++```
++
++`display=swap` is correct here (not `optional` as in the app) — on a marketing page, the swap flash is less costly than a delayed first paint.
++
++---
++
++## 5. Components
++
++### 5.1 Button (identical to app spec)
++
++Uses the same 4 variants from `fintrest-build-spec.md §2.1`. On the landing page, we only use `primary` and `secondary`.
++
++- Primary: Evergreen bg, Pearl text, 40px tall (smaller than app's 48 — nav-appropriate), 11 radius
++- Secondary: transparent, 1px Pearl border, Pearl text
++
++### 5.2 Aperture mark
++
++- Use the V1 solid variant from `fintrest-aperture-marks.svg`
++- On the landing page: 80px high in hero, 16px high in nav wordmark (as dot replacement — optional, skip for simplicity in V1)
++- Launch animation on mount: same timing as the app (§4 aperture-spec)
++
++### 5.3 Editorial text block
++
++A reusable block with max-width 720px, centered, used in §3.3 and §3.5. No border, no background.
++
++### 5.4 Waitlist form
++
++```html
++<form class="waitlist" data-action="/api/waitlist">
++  <input
++    type="email"
++    name="email"
++    placeholder="you@email.com"
++    required
++    aria-label="Email address"
++  />
++  <button type="submit">Join the waitlist</button>
++</form>
++```
++
++**States:**
++
++| State | Behavior |
++|-------|----------|
++| default | input + button side-by-side (desktop), stacked (mobile) |
++| focus | input border becomes `2px evergreen` |
++| submitting | button label replaces with V2 outline aperture rotating; form disabled |
++| success | entire form replaces with `"You're on the list."` in Fraunces 24 Pearl, centered, 600ms fade-in |
++| error | inline below input: `"That didn't go through. Try again."` in Inter 13 Ember |
++
++**Backend options (pick one):**
++
++| Option | Setup time | Cost | Notes |
++|--------|-----------|------|-------|
++| **Formspree** | 5 min | Free up to 50/month | Easiest. Just set `data-action` to the Formspree URL. |
++| **Tally** | 10 min | Free | Slightly prettier dashboard. |
++| **Resend + simple API route** | 30 min on Vercel | Free up to 100/day | Most control; sends you an email per signup. |
++| **Airtable Web API** | 20 min | Free | Signups land in a spreadsheet you can filter/invite from. |
++
++Recommend **Formspree** for V1. Upgrade to your own endpoint once signups exceed 50/month.
++
++---
++
++## 6. Motion & Interactions
++
++Keep this lean. Every motion on the page must earn its existence.
++
++| Interaction | Behavior |
++|-------------|----------|
++| Page load | Aperture V1 opens (240ms quintOut) after 80ms hold. Hero text fades in with 40ms stagger per element after aperture resolves. |
++| Scroll | No parallax, no fade-in on scroll, no reveal animations. The page is one piece. |
++| Waitlist form submit | Button label → spinner (V2 aperture rotating, 2.4s/rev). On success: form cross-dissolves (400ms) to success message. |
++| Nav on scroll | Nav background opacity increases from 0.85 → 0.95 after 100px scroll. 200ms ease-out. |
++| Button hover (desktop only) | Opacity 0.85 for 120ms. No scale, no shadow. |
++| Focus (keyboard) | 2px Evergreen outline, 2px offset. Always visible for accessibility. |
++
++---
++
++## 7. SEO & Metadata
++
++```html
++<title>Fintrest — Grow what you have. Quietly.</title>
++<meta name="description" content="A calm finance app that reads your accounts and tells you what matters. Join the waitlist for early access.">
++
++<meta property="og:title" content="Fintrest">
++<meta property="og:description" content="Grow what you have. Quietly.">
++<meta property="og:image" content="/og-image.png">    <!-- 1200x630, dark, aperture centered with wordmark below -->
++<meta property="og:url" content="https://fintrest.{tld}">
++<meta property="og:type" content="website">
++
++<meta name="twitter:card" content="summary_large_image">
++<meta name="twitter:image" content="/og-image.png">
++
++<link rel="icon" href="/favicon.svg">                 <!-- V2 outlined aperture -->
++<link rel="apple-touch-icon" href="/apple-touch.png"> <!-- app icon, 180x180 -->
++
++<meta name="theme-color" content="#0F0F10">
++```
++
++The OG image is one of the most leveraged assets — when someone shares the link, it's what they see. Design it as a 1200×630 composition: Carbon background, aperture centered, `fintrest` wordmark below, `Grow what you have. Quietly.` in Fraunces 48 small below that. No other elements.
++
++---
++
++## 8. Analytics (set up day 1)
++
++Use **Plausible** (privacy-friendly, no cookie banner needed) or **Vercel Analytics** (free for Hobby plan). No Google Analytics — the cookie banner it forces will be the first thing that breaks the brand's restraint.
++
++Events to track:
++
++| Event | Trigger |
++|-------|---------|
++| `page_view` | Auto |
++| `hero_cta_click` | Click on hero "Join the waitlist" button |
++| `footer_cta_click` | Click on bottom "Join the waitlist" button |
++| `waitlist_submit_attempt` | Form submission fired |
++| `waitlist_submit_success` | Form returned success |
++| `waitlist_submit_error` | Form returned error |
++| `scroll_25` / `scroll_50` / `scroll_75` / `scroll_100` | Scroll depth milestones |
++
++Primary metric: `waitlist_submit_success / page_view` = conversion rate. Target for V1: ≥3% for organic, ≥8% for invited traffic.
++
++---
++
++## 9. Performance Targets
++
++These aren't aspirational — they're enforced by the architecture. Static HTML + CSS + minimal JS means all these should pass trivially.
++
++| Metric | Target |
++|--------|--------|
++| Lighthouse Performance | ≥ 95 |
++| Lighthouse Accessibility | = 100 |
++| Lighthouse Best Practices | = 100 |
++| Lighthouse SEO | = 100 |
++| First Contentful Paint | < 1.0s |
++| Largest Contentful Paint | < 1.5s |
++| Total page weight (excluding fonts) | < 50 KB |
++| JS execution on main thread | < 50ms |
++
++Fonts load async; page renders with system fallbacks immediately.
++
++---
++
++## 10. Tech Stack
++
++For the shortest path to something real:
++
++- **Hosting:** Vercel or Netlify (both free for this scale, instant deploy from GitHub)
++- **Framework:** None. Plain HTML + CSS + minimal JS. Do NOT use Next.js/Gatsby/Astro for a 6-section landing page — overkill.
++- **Forms:** Formspree (§5.4)
++- **Analytics:** Plausible or Vercel Analytics
++- **Fonts:** Google Fonts (CDN)
++- **Source control:** GitHub repo `fintrest-landing` — private for now
++
++**Deploy in 10 minutes:**
++1. Push `fintrest-landing.html` (renamed `index.html`) to a new GitHub repo
++2. Connect repo to Vercel (`vercel.com/new`)
++3. Import → Deploy (no build config needed)
++4. You get a `*.vercel.app` URL instantly
++5. Point a custom domain when ready (see §11)
++
++---
++
++## 11. Domain Strategy
++
++You don't have one yet. Here's how to handle it.
++
++**Step 1: Check availability.**
++- `fintrest.com` — almost certainly taken or parked. Check at `whois.com`. If available, buy it immediately.
++- If `.com` is taken at reasonable price (<$5k), buy it. In fintech, `.com` is worth the premium.
++- If taken and expensive, the fallback order is:
++  - `fintrest.app` (strong for mobile-first product)
++  - `fintrest.co`
++  - `fintrest.money` (on-nose but available)
++
++**Step 2: Trademark check.**
++- Search `uspto.gov/trademarks` for "Fintrest" in Class 36 (financial services) and Class 42 (software).
++- This is free and takes 5 minutes. Critical before committing to the name.
++
++**Step 3: Registrar.**
++- **Cloudflare Registrar** — cheapest (at-cost pricing, ~$10/year for `.com`), no upselling, free WHOIS privacy. Requires domain to use Cloudflare DNS (which is also free and fast).
++- Do not use GoDaddy (opaque pricing, constant upselling).
++
++**Step 4: Defensive registrations.**
++- Buy `fintrest.com`, `fintrest.app`, `fintrest.co` at minimum — prevents typosquatters and protects the brand. ~$30/year total.
++- Redirect all non-primary domains to the primary one via Cloudflare Page Rules.
++
++**Step 5: Deploy under a placeholder.**
++- While you decide: deploy to `fintrest-waitlist.vercel.app` or `fintrest.webflow.io` and share that link with early investors. Vercel preview URLs are fine for private sharing — just don't publicize until the real domain is set.
++
++**Step 6: Email.**
++- Set up `hello@fintrest.{tld}` via Cloudflare Email Routing (free) forwarded to your personal inbox. Use it in the footer. Professional presence without needing Google Workspace yet.
++
++---
++
++## 12. MVP Cut (what to ship first)
++
++To ship this week:
++
++**Must have:**
++- Hero with working waitlist form (Formspree)
++- Thesis block (§3.3)
++- How it works (§3.4, three blocks)
++- Footer
++- OG image
++
++**Skip for v1:**
++- Anti-feature section (§3.5) — powerful, but can ship in v2
++- Pull quote in thesis (§3.3) — business-model dependent
++- Bottom waitlist band (§3.6) — one form is enough; add the second after v1 data
++
++**Absolutely no V2 features:**
++- A "team" or "about" page
++- A blog
++- A FAQ
++- Customer logos or testimonials (you have none)
++
++---
++
++## 13. Copy checklist (what's already written)
++
++All landing page copy is already locked in `fintrest-ux-copy.md`:
++
++| Surface | Location in ux-copy |
++|---------|---------------------|
++| Hero thesis | §13 Marketing Surface Copy |
++| Button labels | §3, §7 |
++| Waitlist success/error | §6 error library |
++| Footer legal link text | §8 |
++
++Do not rewrite anything. Copy is locked.
++
++---
++
++## 14. Investor Readiness
++
++This page doubles as your investor-facing surface. What an investor looking at a Series A-ready fintech brand expects to see:
++
++- [✓] Clear positioning in one sentence
++- [✓] Dark, editorial design (signals "premium")
++- [✓] Waitlist mechanic (signals "pre-launch demand")
++- [✓] Footer with real email (signals "real operation")
++- [✗] Team page — *not recommended for v1.* Adding a team page too early creates pressure to hire to fill it. Wait until you have co-founders or first hire.
++- [✗] Press mentions — *don't fake it.* No "As seen in TechCrunch" without an actual article.
++
++---
++
++*v1.0 — locked for landing page build. Paired with working prototype: `fintrest-landing.html`.*
+diff --git a/fintrest-product-design.md b/fintrest-product-design.md
+new file mode 100644
+index 0000000..bb54619
+--- /dev/null
++++ b/fintrest-product-design.md
+@@ -0,0 +1,533 @@
++# Fintrest — Product Design Spec v1.0
++
++*Translating the Aperture brand into the actual product. Dark mode first, editorial restraint throughout. Source of truth for the brand: `fintrest-aperture-spec.md`. This doc is the source of truth for the product.*
++
++---
++
++## Design Philosophy (the filter every decision passes through)
++
++Three sentences to keep on the wall:
++
++1. **One number per screen.** Every screen has a single hero metric. Everything else is a supporting detail. If a screen has two heroes, it has none.
++2. **Color is information, not decoration.** Evergreen only appears when it means something. A green button is a specific communication. A green number is a specific communication. Never decorative.
++3. **Calm is the feature.** Users don't open Fintrest to feel excited. They open it to feel in control. Every interaction should leave them calmer than it found them.
++
++---
++
++## 1. Core App Screens
++
++### 1.1 Home Dashboard
++
++**What it's for:** The user's one-glance answer to "how am I doing?"
++
++**Layout hierarchy (top → bottom):**
++
++1. **Status bar + greeting** (32px top) — "Good morning, Ayush" in 14px NHG, Mist. No avatar, no notification bell (notifications live in Activity). Serif small-caps section label "OVERVIEW" sits 12px above the greeting for structural rhythm.
++2. **Net Worth — the hero** (96px tall) — JetBrains Mono, 56pt, tabular. Format: `$128,402.18`. Cents are 0.6× the size of dollars (visual de-emphasis). Color: Pearl, always. Never green when up, never red when down — the value is the fact, the delta is the opinion.
++3. **Delta strip** (24px below hero) — `+$412.80 today` in Mono, 14pt. Delta sign color: Pearl by default. Evergreen ONLY if user has manually toggled "show color" in Settings. Default-off is a feature.
++4. **Sparkline** (120px tall, full-width with 24px h-padding) — single 1.5px Pearl line, no axis, no gridlines, no labels, no fill below. Last 90 days of net worth. The only chart on the home screen.
++5. **Accounts strip** (horizontal scroll, 140px tall cards) — 3-4 cards, each: account name (NHG 13pt Mist), balance (Mono 22pt Pearl), tiny institution mark bottom-right. Swipe horizontally.
++6. **Today's Insight** (single card, full-width, 24px padding, 160px minimum height) — 1 paragraph of serif prose (GT Super 17pt, line-height 1.45), 2-3 sentences. Numbers in the prose set in Mono inline. Tiny V3 single-blade glyph top-right.
++7. **Recent Activity** (3 rows, collapsed) — "See all" link right-aligned in Pearl with 1px underline.
++
++**Typography map:**
++- Section labels (OVERVIEW, ACCOUNTS, etc.): GT Super small-caps, 10pt, letter-spacing +200, Mist
++- All numbers: JetBrains Mono, tabular, Pearl
++- Everything else (greetings, account names, insight prose): NHG for UI, GT Super for editorial moments (insight prose, section labels)
++
++**Aperture usage:** Bottom nav tab indicator when Home is active — a 20px V2 outlined aperture above the "Home" label, Pearl. Nowhere else. No big logo anywhere on this screen.
++
++---
++
++### 1.2 Portfolio / Investments
++
++**What it's for:** A calm read on investment performance without turning the user into a day trader.
++
++**Layout hierarchy:**
++
++1. **Portfolio value** — hero number, Mono 52pt, Pearl. Same treatment as Home net worth.
++2. **Delta row** — two stacked lines of Mono:
++   - Line 1: `+$1,240.18` today (14pt, Pearl)
++   - Line 2: `+2.4% · YTD +18.2%` (11pt, Mist)
++   Color follows the same "neutral by default" rule as Home. Only the *Evergreen glow halo* (see §3.2) signals gains.
++3. **Time range toggle** — `1D · 1W · 1M · 1Y · ALL` in GT Super small-caps, 10pt, letter-spacing +200. Active range is Pearl; inactive is Mist. No pill background, no border — just color shift. One of those micro-details that moves the product upmarket.
++4. **Chart** (240px tall) — single Pearl line, no grid, no axes, no labels until user taps. On tap: a crosshair appears with the value at that point floating in Mono. Long-press to drag through history.
++5. **Asset allocation strip** (80px tall, horizontal bar) — a single horizontal bar divided into segments by asset class (Stocks, Bonds, Cash, etc.). Each segment is a different shade of Pearl→Mist→Carbon. No color coding by class. Labels below segments in GT Super small-caps.
++6. **Holdings list** — rows with:
++   - Left: company name (NHG 15pt Pearl)
++   - Below name: ticker (Mono 11pt Mist)
++   - Right: position value (Mono 15pt Pearl, right-aligned, tabular)
++   - Below value: delta (Mono 11pt Mist, right-aligned)
++   - Row height: 64px, 16px vertical rhythm
++   - Divider: 1px `#1C1F22` between rows
++7. **Add position** — text link at bottom, `+ Add a position`, Pearl, centered. Not a floating action button. Not a prominent CTA.
++
++**Typography map:**
++- Company names: NHG
++- Tickers: Mono (signals "terminal of your money" — Mercury does this, works)
++- All prices and percentages: Mono
++- Time ranges and labels: GT Super small-caps
++
++**Aperture usage:** When a holding crosses a meaningful threshold (configurable, default ±5%), a 1px Evergreen glow appears on the *left edge* of that row — 48px tall, 2px wide, blurred. Whisper of signal.
++
++---
++
++### 1.3 Insights / AI Recommendations
++
++**What it's for:** The "smart" part of Fintrest. This is the editorial room. Not a chatbot.
++
++**Layout hierarchy:**
++
++1. **Week header** — "Week of April 20" in GT Super small-caps, 12pt, Mist. Above it: the text "THIS WEEK" in the same treatment but 10pt.
++2. **The Insight** (hero editorial block) — 3-4 paragraphs of GT Super 18pt prose, line-height 1.5, Pearl. Max width: 560pt centered. Numbers in Mono inline at the same size. This is the only screen where serif is the body copy.
++3. **Signal row** (below the insight) — 3 pills showing what Fintrest noticed: `Spending ↓ · Cash flow +12% · Goal on track`. Each pill: GT Super small-caps 10pt, Mist, 1px Mist underline. No pill background.
++4. **Pinned insights carousel** — 3-5 cards, horizontal scroll. Each card: 280pt × 180pt, Carbon Lifted bg, 16px radius, 24px padding. Each card has a V3 single-blade glyph top-right — filled blade = high-confidence insight, outlined blade = exploratory.
++5. **Ask bar** (bottom, sticky) — a quiet text input: "Ask Fintrest something". NHG 14pt placeholder in Mist. No sparkle icon. No "AI" label. The product is AI; it doesn't need to advertise.
++
++**Typography map:**
++- Editorial prose: GT Super 18pt (the only screen where serif is body)
++- Numbers in prose: JetBrains Mono 18pt (matches the serif's optical weight)
++- Signal pills and small labels: GT Super small-caps 10pt
++- Ask bar: NHG 14pt
++
++**Aperture usage:** On scroll-enter, the insight block does a one-time aperture-reveal: it fades in from an iris mask centered on the first character. 400ms, ease-out-quint. Only the first time the card enters viewport per session.
++
++---
++
++### 1.4 Transaction / Activity
++
++**What it's for:** Finding the $47 charge. Should feel like a well-designed statement, not a feed.
++
++**Layout hierarchy:**
++
++1. **Search bar** (top, sticky, 48px tall) — Carbon Lifted bg, 12px radius. No icon. Placeholder: "Search transactions" in NHG 14pt Mist. Entering search dims the rest of the screen to 40% and shows results inline.
++2. **Filter row** (beneath search, horizontal scroll) — chips for categories, accounts, date range, amount range. Chip style: GT Super small-caps 10pt, Mist by default, Pearl when active, 1px Pearl underline when active (no bg fill).
++3. **Date-grouped list**:
++   - Date header: GT Super small-caps 10pt, letter-spacing +200, Mist, sticky on scroll
++   - Row: 64px tall, 4px between rows (not 0 — breathing room matters)
++   - Row contents:
++     - Left: Merchant name (NHG 15pt Pearl), below: category chip (GT Super small-caps 9pt Mist)
++     - Right: Amount (Mono 15pt, tabular, right-aligned). Negative amounts (outgoing) are Pearl; positive (incoming) are Pearl; never colored by default.
++4. **Tap on a transaction** → the row "opens" via aperture iris expansion (see §3.5). The opened state shows: map thumbnail (if location), category edit, split/refund options, notes field. No modal.
++
++**Typography map:**
++- Merchant names: NHG (sans, because merchants are brands)
++- Category labels: GT Super small-caps (editorial feel for taxonomy)
++- All amounts: JetBrains Mono, tabular, right-aligned (critical — numbers must line up in columns)
++- Date headers: GT Super small-caps
++
++**Aperture usage:** The transaction-open animation is an aperture iris expansion — 260ms ease-out-quint, the detail view emerges from the tap point like a blade opening outward. This is the single most-used branded interaction in the app.
++
++---
++
++### 1.5 Onboarding (first-time user)
++
++**What it's for:** The brand's first impression. Don't over-explain. Let the aperture do the work.
++
++**Sequence (5 screens max, one concept per screen):**
++
++**Screen 01 — Welcome**
++- Carbon background, full screen
++- Aperture V1 mark centered, starts closed, slowly opens over 1200ms on mount
++- Wordmark "fintrest" fades in below mark, 400ms after open completes (NHG 28pt, -2% tracking, Pearl)
++- Single line of GT Super 24pt below wordmark: **"Grow what you have. Quietly."**
++- CTA at bottom: `Get started` — Evergreen bg, Pearl text, 48px tall, 12px radius, bottom-padded 48px from safe area
++
++**Screen 02 — Sign In**
++- Three buttons stacked: `Continue with Apple`, `Continue with Google`, `Continue with email`
++- Each 48px tall, 12px radius, Pearl border (1px), Pearl text, transparent bg
++- No social logins (no Facebook, no Twitter) — signals a different user profile
++- 16px between buttons
++- "Privacy and terms" link at bottom in 11pt NHG Mist with underline
++
++**Screen 03 — Connect your accounts**
++- Section label top: "STEP 2" in GT Super small-caps 10pt Mist
++- Large editorial headline: GT Super 32pt, Pearl: **"Let's read the last 90 days."**
++- Paragraph below in NHG 15pt Mist: `Fintrest needs to see your accounts to find patterns. We don't store your bank login. Powered by Plaid.`
++- CTA: `Connect an account` (Evergreen primary)
++- Secondary link: `Skip for now` (Pearl text, underlined on tap)
++
++**Screen 04 — The Read (the magic moment)**
++- Triggered when Plaid finishes
++- Aperture V1 rotates slowly in the center (2s loop, 1 full revolution)
++- Single line of editorial serif text appears, letters fading in one word at a time (60ms stagger):
++  **"We've read 812 transactions across 3 accounts."**
++- 1200ms pause
++- Second line appears: **"Here's the first thing we noticed."**
++- Transitions to the first insight (same format as the Insights screen)
++- This is the moment that earns the "smart like AI" positioning. No loading spinner, no progress bar — the aperture IS the loader.
++
++**Screen 05 — First Insight + Goal**
++- The AI's first observation, framed as editorial prose (GT Super 18pt, same as Insights screen)
++- Below: `Let's set one goal.` — simple 3-option picker: `Save for something specific · Grow my investments · Just track for now`
++- No gamification, no streaks to unlock, no reward preview
++- Final CTA: `Open Fintrest` (Evergreen primary)
++
++**Typography map throughout onboarding:**
++- Headlines: GT Super 24-32pt (editorial gravitas)
++- Body: NHG 15pt
++- Buttons: NHG 15pt, weight 500
++
++**Aperture usage:** The aperture is the glue between steps. Each step transition: aperture closes (200ms), black frame (40ms), aperture opens on the new step (240ms). Feels like pages turning in a well-made book.
++
++---
++
++## 2. Design System
++
++### 2.1 Color tokens
++
++```
++/* Surfaces — dark mode (default) */
++--carbon            #0F0F10   Background (all screens)
++--carbon-lifted     #14181A   Cards, elevated surfaces
++--carbon-border     #1C1F22   Hairline dividers, card borders
++--obsidian          #0A0B0C   Deepest surface (modal underlays)
++
++/* Text & marks */
++--pearl             #FAFAF7   Primary text, primary mark
++--mist              #A6ADB4   Secondary text, muted labels
++--fog               #6B7178   Tertiary text, disabled states
++
++/* Accent — use with restraint */
++--evergreen         #1F5C46   Primary CTA, confirmed states, brand moments
++--evergreen-glow    #1F5C46 @ 35%   Subtle glow/halo overlays
++
++/* Alert — use very rarely */
++--ember             #B24A2A   Destructive actions, real warnings (not "stock down")
++
++/* Light mode (alternate) */
++--bone              #EDE6D6   Light mode background (warm, never pure white)
++--bone-lifted       #F5F1EA   Light mode cards
++```
++
++### 2.2 When to use Evergreen (the most abused token in fintech)
++
++**Use Evergreen when:**
++- Primary CTA buttons (1 per screen max — there is always exactly one primary action visible)
++- Confirmation of a completed action (deposit confirmed, goal met, transfer sent)
++- The tiny inner glow in the aperture icon (app icon only)
++- The signal glow on portfolio rows crossing thresholds (§1.2)
++- Focus state on form fields (2px outline)
++- The left border of the "Today's Insight" card
++
++**Never use Evergreen for:**
++- Any positive number ("you made money" green). Numbers are Pearl. Always.
++- Chart lines. Chart lines are Pearl.
++- Success toasts (toasts shouldn't be Evergreen — they should be Carbon Lifted with a 2px Evergreen left border at most)
++- Icons in the tab bar
++- Backgrounds of cards
++- Badges, pills, tags
++- "New" indicators
++- Decorative accents
++
++Rule of thumb: there should be **at most one Evergreen element visible per screen at any time**. If you have two, one is wrong.
++
++### 2.3 Spacing system
++
++Base unit: **4px**. Everything is a multiple of 4.
++
++```
++--space-1    4px     Hairline gaps
++--space-2    8px     Tight inline elements
++--space-3    12px    Icon + label, pill padding
++--space-4    16px    Between related items in a list
++--space-5    24px    Card internal padding, screen h-padding on mobile
++--space-6    32px    Between sections of a screen
++--space-7    48px    Between major sections / vertical CTA anchoring
++--space-8    64px    Screen-top spacing, hero areas
++--space-9    96px    Reserved for the "breath" around hero numbers
++--space-10   128px   Onboarding hero spacing
++```
++
++**Screen-level defaults:**
++- Mobile screen h-padding: **24px**
++- Mobile screen v-padding (top): **32px** below status bar
++- Card padding: **24px**
++- Section vertical rhythm: **48px** between logical sections
++
++### 2.4 Card styles
++
++**Default card:**
++```
++background:        var(--carbon-lifted)   #14181A
++border:            1px solid var(--carbon-border)   #1C1F22
++border-radius:     16px
++padding:           24px
++box-shadow:        none
++```
++
++Critical detail: the 1px `#1C1F22` border is almost invisible against the `#14181A` fill, but it picks up ambient light from the environment and gives the card an edge. This is the difference between "floating" (cheap) and "crafted" (premium).
++
++**Emphasized card** (Today's Insight, onboarding hero):
++```
+++ left-border:     2px solid var(--evergreen)
+++ padding-left:    22px   /* preserves content alignment */
++```
++
++**Interactive card** (tap-to-expand):
++```
++transition:        border-color 160ms ease-out
++:active {
++  border-color:    var(--pearl) @ 20%
++}
++```
++
++No hover state. This is mobile-first.
++
++### 2.5 Button styles
++
++**Primary (Evergreen)**
++```
++height:            48px
++padding:           0 24px
++background:        var(--evergreen)
++color:             var(--pearl)
++border-radius:     12px
++font:              NHG Medium, 15pt, letter-spacing -0.5%
++shadow:            none
++```
++Use exactly once per screen.
++
++**Secondary (outline)**
++```
++height:            48px
++padding:           0 24px
++background:        transparent
++border:            1px solid var(--pearl)
++color:             var(--pearl)
++border-radius:     12px
++font:              NHG Medium, 15pt
++```
++
++**Tertiary (text link)**
++```
++color:             var(--pearl)
++font:              NHG Medium, 15pt
++text-decoration:   underline
++text-underline-offset: 4px
++```
++
++**Destructive**
++```
++Same as secondary, but border and text are var(--ember).
++Do NOT fill with Ember. Destructive actions are quiet; the weight is in the confirm dialog, not the button.
++```
++
++**Disabled (any variant):**
++```
++opacity:  0.35   (no color shift, just opacity — preserves brand tokens)
++```
++
++No icons inside buttons by default. Buttons with leading icons are permitted only for third-party logos (Apple, Google login).
++
++### 2.6 Icon usage
++
++Three icon systems coexist; use the right one:
++
++1. **Aperture marks (brand)** — only where the brand speaks:
++   - V2 outline: bottom-nav active tab indicator, loading spinners, favicon
++   - V3 single blade: Insights card confidence indicator, account-tier badges, Apple Watch complication
++   - V1 solid: app icon only
++
++2. **UI icons (system)** — Phosphor Icons (outline/regular weight) at 20px default:
++   - Navigation glyphs (chevrons, search, close)
++   - Category icons in filter chips
++   - Merchant category icons (category icons in Activity — a subtle Phosphor outline icon to the *left* of the merchant category chip at 12px)
++   - Color: Mist by default, Pearl when active
++   - Stroke weight: 1.5px
++
++3. **Merchant logos** — real brand logos for merchants (Stripe, Starbucks, etc.) at 32px, masked to 8px radius. Never replace with an emoji.
++
++### 2.7 Dark mode behavior
++
++**Dark mode is the default, not an alternate.** Light mode is the exception.
++
++- System preference respected on first launch, but user can override
++- When the user manually toggles, it persists and does not follow system
++- Status bar always matches the app's background (no mismatch ever)
++- Pure white (`#FFFFFF`) is banned — always use Pearl `#FAFAF7` or Bone `#EDE6D6`
++- Pure black (`#000000`) is banned — always use Carbon `#0F0F10` or Obsidian `#0A0B0C`
++- The reason: pure white/black shock the eye on OLED displays; Pearl/Carbon have slight warmth that reads as considered rather than default
++
++**Light mode adjustments:**
++- Backgrounds: Bone `#EDE6D6` (warm off-white, not clinical)
++- Text: Carbon `#0F0F10`
++- Cards: Bone Lifted `#F5F1EA` with 1px `#E3DBC8` border
++- Evergreen stays the same — it works on both
++- Aperture marks invert: V1 Carbon on Bone
++
++---
++
++## 3. Signature UX Moments
++
++*Five "calm wow" interactions. Each is subtle enough that users might not consciously notice, but they'd notice if it were missing.*
++
++### 3.1 The Balance Odometer
++
++When any balance updates (new transaction, market tick, deposit lands), the number doesn't cut. Each digit transitions independently, flipping through the intermediate values like an airport split-flap display — but rendered in JetBrains Mono, not imagery.
++
++- Duration: 280ms per digit
++- Stagger: 40ms between digits (rightmost first, then propagates left)
++- Easing: `cubic-bezier(0.22, 1, 0.36, 1)` (ease-out-quint — matches the aperture)
++- No audio, no haptic
++- Digits that don't change don't animate (only the digits that changed flip)
++
++This is the single most-seen animation in the app. It needs to be perfect at 60fps, never janky.
++
++### 3.2 The Inverted Chart
++
++**Industry-standard:** chart line turns green when gains, red when losses.
++
++**Fintrest:** the chart line is always Pearl. Gains are signaled by a faint Evergreen *halo* that lives UNDER the line, rendered as a vertical gradient fading down. Halo opacity = magnitude of gain, capped at 40%. Losses get no color — the line just goes down. Losses are not something to color-code; they're something to notice.
++
++- Halo color: `--evergreen @ variable alpha`
++- Halo blur: 24px Gaussian
++- Halo anchors: bottom of chart container
++- Updates: halo opacity tweens over 600ms when data refreshes
++
++Why this works: it removes the dopamine loop of "green means good." Users stop checking the app to see green. The app becomes a tool, not a slot machine.
++
++### 3.3 The Weekly Opening
++
++Monday mornings at 7am local, the Fintrest app-icon badge shows a single V3 blade glyph in Evergreen (no number). When the user opens the app, the home screen's Insight card plays a one-time perimeter glow: a 2px Evergreen light travels around the card's border, completing a full loop over **800ms**, then vanishes. Once per week. Never repeats.
++
++- This is the only "notification" visual in the product
++- No push notifications for balance changes, no "your spending went up" alerts
++- One signal per week, timed, perimeter glow, done
++
++### 3.4 Haptic Weight
++
++Every new transaction arriving in the app triggers a haptic scaled to the amount:
++
++| Amount | Haptic |
++|--------|--------|
++| Under $10 | None |
++| $10–$100 | `UIImpactFeedbackGenerator(.soft)` |
++| $100–$1,000 | `.light` |
++| $1,000–$10,000 | `.medium` |
++| $10,000+ | `.rigid` (one short pulse, not heavy) |
++
++Users feel the scale of their money. Over time, this teaches proportion — the app becomes embodied, not visual. No visual treatment needed; the haptic is the signal.
++
++Settings toggle to disable (default ON).
++
++### 3.5 Focus on a Number
++
++Long-press any number anywhere in the app (800ms) to enter **Focus mode**:
++- The rest of the screen dims to 40% opacity
++- The held number scales to 1.1× with a subtle 1px Evergreen underline
++- A contextual panel slides up from the bottom (Carbon Lifted card, 16px radius) with breakdowns, source transactions, calculations, time-range pivots
++- Release finger: panel slides down, screen restores
++- Haptic: `.soft` on enter, `.soft` on exit
++
++This is the universal "tell me more" gesture in Fintrest. Works on net worth, balances, stock prices, category totals, insight numbers — any Mono number in the product.
++
++### 3.6 Transaction Aperture Open
++
++Tapping a transaction row in Activity plays a branded iris-wipe reveal:
++- A circular mask centered on the tap point expands outward at **480px/sec**
++- The mask reveals the transaction detail view (which replaces the list in place)
++- During expansion, the 6-blade aperture mark flashes at 20% opacity in the mask's center for 180ms, then fades
++- Easing: `cubic-bezier(0.65, 0, 0.35, 1)` (ease-in-out-cubic)
++
++Back-swipe reverses: the detail collapses into the tapped row's position via the same iris.
++
++---
++
++## 4. What to AVOID
++
++### 4.1 Fintech UI mistakes that break the Fintrest filter
++
++Do not ship any of these. If a designer proposes one, push back.
++
++**Color & decoration mistakes:**
++- Green numbers by default for positive values (the Robinhood disease — users develop obsessive-checking behavior)
++- Red numbers for losses (panic response, drives over-checking)
++- Purple gradients (2019 neobank tell — Revolut, N26 original palette)
++- Rainbow gradient charts (crypto tell)
++- Gradient text
++- Text shadows or strokes on numbers
++- Emoji as category icons (🛒 for groceries) — reads as "shipped in 2 weeks"
++- Colorful category chips with bespoke palette per category — inconsistent, noisy
++
++**Gamification & dopamine loops:**
++- Streaks ("You've saved 12 days in a row!") — creates anxiety, not discipline
++- Progress bars for every goal — infantilizes the user
++- Confetti or celebration animations — patronizing in a finance context
++- Badges / achievements — this is not Duolingo
++- Leaderboards, rankings, social comparisons ("You saved more than 73% of users") — weaponizes money against self-esteem
++- Motivational copy ("You're crushing it this week!") — this is the user's money, not their CrossFit
++- "Share your win" buttons on any screen — nobody should post "I saved $50 today"
++- Mascot characters — unserious
++
++**Structural UI mistakes:**
++- More than 4 tab-bar items
++- Floating action buttons (FABs) — Material Design 2018, reads as Google not Apple
++- Bottom sheets for every secondary action (lazy default, overused)
++- Tilted isometric card illustrations — fintech landing page 2020
++- Hero photos of smiling diverse people — stock-photo tell
++- Auto-playing video on app open
++- Skeleton loaders everywhere (often janky, rarely better than a proper empty state)
++- Pulsing "LIVE" indicators or ticker tape — crypto exchange tell
++- Candlestick charts by default — trading bro aesthetic; reserve for Pro view only if ever
++- Notification badges on every tab — "everything is urgent" = nothing is urgent
++
++**Motion mistakes:**
++- Spring physics / bounce easing — reads as consumer/toy, not tool
++- Parallax scrolling on marketing surfaces that leaks into product
++- Animations longer than 600ms for non-reveal interactions
++- Lottie confetti anywhere
++
++**Copy mistakes:**
++- Exclamation points in product copy (reserve for errors only, and even then use periods)
++- "Oops!" or "Uh oh!" in error messages — patronizing
++- "AI-powered" or "Powered by AI" anywhere — if the user can tell, you don't need to say it
++- Numbers written as words in running copy ("three hundred dollars") — always digits in Mono
++- Emoji in headers or marketing copy
++
++### 4.2 Things that quietly erode premium feel
++
++These are subtle, but they compound:
++
++- **Inconsistent corner radius.** 8px in one card, 12px in another. Lock it: all cards 16px, all buttons 12px, all pills 999px (fully rounded). Nothing else.
++- **Unaligned number columns.** Any table or list where amounts aren't right-aligned in tabular Mono. Users *feel* misaligned numbers even when they can't name it.
++- **Pure white or pure black.** Kills the warmth. Always Pearl/Carbon.
++- **Inconsistent icon stroke weight.** Phosphor outline throughout, 1.5px. No 2px icons mixed in.
++- **Web fonts without a proper loading strategy.** FOUT (flash of unstyled text) in the first second of app launch kills the brand before it starts.
++- **Shadows used to indicate elevation.** Use Carbon Lifted + border instead.
++- **"Back" buttons as chevrons only.** Include a word ("Back") — it's more considered.
++- **System alerts for confirmations** ("Are you sure?"). Use in-app bottom sheets styled to brand.
++
++### 4.3 Example patterns to explicitly reject
++
++If a PM asks for any of these, show this list:
++
++| Bad pattern | Why it's wrong for Fintrest | What to do instead |
++|-------------|------------------------------|---------------------|
++| "Your portfolio is up 📈 +4.2%" push notification | Gamifies checking, colors default | The weekly aperture badge (§3.3), one per week |
++| Animated confetti when user hits a savings goal | Infantilizes, breaks calm | A quiet one-time aperture-open on the goal card, with the word "Done." in serif |
++| "Compete with friends" feature | Weaponizes money socially | Don't build it. Ever. |
++| Ticker tape at top of investments screen | Crypto exchange aesthetic | The time-range toggle and single chart line (§1.2) |
++| Floating chat bubble for customer support | Breaks hierarchy, Intercom-era UI | A "Help" item in the account menu; a dedicated Support screen if needed |
++| Streak counter for days of tracked spending | Streak anxiety, not discipline | Nothing — the absence is the feature |
++| Dark mode as an alternate to light default | Gets the positioning backwards | Dark default; light is the alternate |
++
++---
++
++## 5. Implementation Handoff Checklist
++
++Before engineering cuts the first screen:
++
++- [ ] Design tokens imported (§2.1) — all colors, spacing, type scale
++- [ ] Fonts licensed and loaded: GT Super Display, Neue Haas Grotesk Display + Text, JetBrains Mono
++- [ ] Font-loading strategy prevents FOUT (use `font-display: optional` or preload)
++- [ ] Aperture SVG assets imported (V1, V2, V3) — see `fintrest-aperture-marks.svg`
++- [ ] Base component library built: Button (4 variants), Card (3 variants), Text (serif / sans / mono), Input, List Row, Chip
++- [ ] One "ShowcaseScreen" rendering every component in every state, for QA
++- [ ] Odometer component built and tested at 60fps on lowest supported device (§3.1)
++- [ ] Haptic scaling service centralized (§3.4) so any transaction-event consumer can call one function
++- [ ] Aperture launch animation implemented per `fintrest-aperture-spec.md` §4
++
++---
++
++*Spec v1.0 — product design source of truth. Update in place as decisions are made. Anything not specified here is a designer judgment call; anything specified here is locked unless revised with changelog.*
+diff --git a/fintrest-ux-copy.md b/fintrest-ux-copy.md
+new file mode 100644
+index 0000000..eb271a1
+--- /dev/null
++++ b/fintrest-ux-copy.md
+@@ -0,0 +1,655 @@
++# Fintrest — UX Copy Library v1.0
++
++*The voice of the product, captured. Every string in MVP V1 is specified below. When adding copy later, start with §1 (voice rules) and §2 (glossary). If you can't find a string here, write it by matching the nearest analogous string, not by writing freshly.*
++
++---
++
++## 1. Voice Rules
++
++Ten rules. Anyone writing copy for Fintrest must be able to recite these.
++
++1. **Write like an editor, not a coach.** State facts. Don't tell the user how to feel about them.
++2. **Brevity is not minimalism.** Cut until removing one more word breaks the meaning, then stop. Don't truncate into curtness.
++3. **No exclamation points.** Reserved for actual errors, and even there, we use periods. There is no exception.
++4. **No "Oops!", no "Uh oh!", no "Hmm!"** — patronizing. State what happened.
++5. **No "we" unless necessary.** Most sentences don't need an actor. "Bank didn't respond" beats "We couldn't connect to your bank."
++6. **No motivational language ever.** Not "You're crushing it!", not "Great job!", not "Keep going!" This is the user's money. They do not need cheerleading.
++7. **No "AI" in the product.** The user can tell. Saying it advertises it, which cheapens it.
++8. **Numbers are always digits, always Mono.** "3 accounts," not "three accounts." Never spell out amounts in running copy.
++9. **Specific > vague.** "812 transactions" beats "your transactions." "Last 30 days" beats "recent activity."
++10. **When in doubt, say less.** The Fintrest answer to "should we explain this more?" is almost always no.
++
++### Forbidden words & phrases
++
++| Banned | Why | Use instead |
++|--------|-----|-------------|
++| Oops / Uh oh / Hmm | Patronizing | State what happened |
++| Awesome / Great / Amazing | Cheerleading | (nothing — remove) |
++| Let's get you set up | Tour-guide tone | "Connect an account" |
++| Don't worry | Assumes anxiety | (nothing — remove) |
++| We've got you covered | Corporate warmth | State the action |
++| Powered by AI / AI-powered | Advertising the thing | (nothing — remove) |
++| Sorry | Performative | State what broke |
++| Crushing it / Smashing it / On fire | Fitness-app tone | (nothing — remove) |
++| Magic / Magical | Reduces trust in finance | "Automatic" or "instant" |
++| Seamless | Meaningless | (nothing — remove) |
++| Level up / Unlock | Gamification | State the feature |
++
++---
++
++## 2. Glossary (terminology lock)
++
++Same term, same thing, everywhere. Pick one and stick to it.
++
++| Concept | Use | Do not use |
++|---------|-----|------------|
++| A connected bank or brokerage | **account** | linked account, integration, source |
++| The user's Fintrest profile | **profile** (or the user's name) | account |
++| Money in a bank account | **balance** | money, funds, cash |
++| Value of investments | **value** | balance, worth |
++| Combined total across everything | **net worth** | total, portfolio value |
++| A single charge, deposit, or transfer | **transaction** | payment, charge, entry |
++| An AI-generated observation | **insight** | tip, recommendation, suggestion |
++| Linking a bank account | **connect** | link, add, sync |
++| Authenticating | **sign in** | log in, log on, authenticate |
++| The weekly readout | **the week in review** | weekly report, summary |
++| Money going out | **spending** | expenses, outflows |
++| Money coming in | **income** | deposits, inflows |
++| Stocks, ETFs, etc. | **positions** (plural) / **holding** (one line item) | assets, investments (ambiguous) |
++| The app itself | **Fintrest** | the app, our platform |
++
++### Capitalization rules
++- Proper nouns: **Fintrest**, **Apple**, **Google**, **Plaid**
++- Tab / section names in UI: **sentence case** ("Portfolio" not "PORTFOLIO")
++  - Exception: small-caps treatment in GT Super (§1.2 of product spec) — the text string is still written in sentence case; the font renders it as small-caps
++- Button labels: **sentence case** ("Connect an account" not "Connect An Account")
++- Headlines in onboarding: **sentence case** with a period if a sentence ("Let's read the last 90 days.")
++- Error messages: **sentence case** with a period
++
++### Date & time format
++- Short: `Apr 20` (no period after month)
++- Medium: `April 20, 2026`
++- In running copy: `April 20` (no year unless needed for clarity)
++- Time: `7:00 am` (lowercase am/pm, no period, thin space before if possible)
++- Relative: `today`, `yesterday`, `2 days ago`, `last Monday` — use up to 7 days, then fall back to `Apr 20`
++
++### Currency format
++- Default: `$128,402.18` (always 2 decimals, comma separators)
++- In sentences: `$128` (drop cents when round, drop decimals when whole) — exception: in any Mono context, always show 2 decimals for alignment
++- Negatives in sentences: `-$412` (minus sign, not parentheses)
++- Negatives in Mono columns: `-$412.00` (minus sign at left of digits)
++
++---
++
++## 3. Onboarding Copy (V1)
++
++### Step 01 — Welcome
++
++| Element | Copy |
++|---------|------|
++| Wordmark (image) | `fintrest` |
++| Thesis (GT Super 24) | `Grow what you have. Quietly.` |
++| Primary CTA | `Get started` |
++
++**Notes:** No subtitle, no explainer paragraph, no "the smart way to..." line. The thesis does the entire job. Do not add to this screen.
++
++---
++
++### Step 02 — Sign In
++
++| Element | Copy |
++|---------|------|
++| Section label (SmallCaps) | `Step 1` |
++| Headline (GT Super 32) | `Sign in` |
++| Apple button | `Continue with Apple` |
++| Email button | `Continue with email` |
++| Google button (V2) | `Continue with Google` |
++| Legal footer | `By continuing, you agree to our Terms and Privacy Policy.` |
++| Legal link labels | `Terms` · `Privacy Policy` |
++
++**Notes:** No "Welcome back" branching. The same copy works for new and returning users — Apple/Google handles the distinction. Keep it flat.
++
++---
++
++### Step 03 — Connect Account
++
++| Element | Copy |
++|---------|------|
++| Section label | `Step 2` |
++| Headline | `Let's read the last 90 days.` |
++| Body | `Fintrest needs to see your accounts to find patterns. Your bank login stays between you and your bank — we never see it. Connections are handled by Plaid.` |
++| Primary CTA | `Connect an account` |
++| Secondary link | `Skip for now` |
++
++**Alternatives for headline:**
++
++| Option | Copy | Best for |
++|--------|------|----------|
++| A (ship) | `Let's read the last 90 days.` | Premium, specific, earns the AI moment |
++| B | `Connect your first account.` | Most direct — use if headline A tests weak with Gen Z |
++| C | `Start with one account.` | Lowest-commitment framing — use if connection rates are low |
++
++**Rationale:** A is the strongest because it previews the magic moment (the AI read) without saying "AI." B is the safe fallback. Do not use vague "Link your bank" — "bank" understates the positioning (we also read brokerages eventually).
++
++---
++
++### Post-Plaid loading state
++
++| Element | Copy |
++|---------|------|
++| Headline (SmallCaps) | `Reading your accounts` |
++| Body (NHG) | `Usually takes 10 to 20 seconds.` |
++
++**Do not write:** "This won't take long!" or "Just a moment..." or any variant with ellipsis+exclamation combined. Ellipses are allowed when followed by no punctuation, but keep rare.
++
++### Post-Plaid success (brief, auto-dismisses)
++
++| Element | Copy |
++|---------|------|
++| Confirmation (center screen, 1.2s) | `Connected.` |
++
++One word. Period. No checkmark animation, no "All set!" banner.
++
++### Post-Plaid failure
++
++| Element | Copy |
++|---------|------|
++| Headline | `That didn't connect.` |
++| Body | `Your bank declined the connection or timed out. This is almost always temporary.` |
++| Primary CTA | `Try again` |
++| Secondary link | `Connect a different account` |
++
++---
++
++## 4. Home Screen Copy
++
++### Section labels
++
++| Position | Copy |
++|----------|------|
++| Header section (above greeting) | `Overview` |
++| Accounts section | `Accounts` |
++| Activity section | `Recent activity` |
++
++All rendered as GT Super small-caps (§1.2 product spec). Strings are written in sentence case; the font handles the caps.
++
++### Greetings (time-of-day variants)
++
++| Window | Copy |
++|--------|------|
++| 05:00–11:59 | `Good morning, {firstName}` |
++| 12:00–17:59 | `Good afternoon, {firstName}` |
++| 18:00–21:59 | `Good evening, {firstName}` |
++| 22:00–04:59 | `Hello, {firstName}` |
++
++**Edge cases:**
++- No name provided: drop the comma — `Good morning` (not "Good morning, ")
++- Very long first name (>12 chars): still use it; the greeting sets font-size down if it wraps
++
++### Delta strings (below hero number)
++
++| Direction | Copy |
++|-----------|------|
++| Positive | `+$412.80 today` |
++| Negative | `-$412.80 today` |
++| Zero / < $0.01 change | `Unchanged today` |
++| No data for comparison (new account, first day) | `No change yet` |
++
++**Alternatives for time window:** when user scrolls to a different range via long-press, the string updates: `+$4,120.18 this month`, `+$18,240 this year`. Format: `{sign}{amount} {window}`.
++
++### "See all" link
++
++- Activity section link: `See all`
++- Accounts section link (when >3 connected): `See all`
++
++Always two words. Sentence case. Pearl color, 1px underline in spec.
++
++### Empty states on Home
++
++| State | Copy |
++|-------|------|
++| No accounts yet (shouldn't happen post-onboarding, but possible if user disconnects all) | Headline: `No accounts connected.` Body: `Connect one to see your net worth and activity.` CTA: `Connect an account` |
++| No transactions in last 7 days | (no empty state shown — the Recent Activity section is simply omitted from the screen) |
++
++---
++
++## 5. Activity Screen Copy
++
++### Labels
++
++| Element | Copy |
++|---------|------|
++| Section header | `Activity` |
++| Search placeholder | `Search transactions` |
++
++### Filter chips
++
++Stock set for V1. Sentence case.
++
++| Group | Chip labels |
++|-------|-------------|
++| Categories | `Food` · `Transport` · `Shopping` · `Bills` · `Entertainment` · `Income` · `Transfers` · `Other` |
++| Date range | `Today` · `This week` · `This month` · `This year` · `All` |
++
++**Do not use** category-emoji prefixes (`🛒 Shopping`). Category icons from Phosphor are rendered separately (§1.4 product spec).
++
++### Transaction row
++
++| Field | Format / example |
++|-------|------------------|
++| Merchant | `Blue Bottle Coffee` (preserve the merchant's actual capitalization — don't lowercase) |
++| Category (chip below merchant) | `Food` |
++| Amount | `-$6.50` (outgoing) · `+$2,400.00` (incoming) |
++
++### Transaction detail (on tap)
++
++Fields shown, in order:
++
++```
++Amount              -$6.50
++Date                April 20, 2026 · 8:42 am
++Merchant            Blue Bottle Coffee
++Category            Food  [Edit]
++Account             Checking · Chase
++Notes               [Add a note]
++```
++
++| Element | Copy |
++|---------|------|
++| "Edit" link | `Edit` |
++| "Add a note" placeholder | `Add a note` |
++| Notes saved confirmation (inline, 1.5s, Mist text) | `Saved.` |
++| "Split transaction" action (V2) | `Split` |
++| "Report an issue" (V2) | `Report an issue` |
++
++### Empty states
++
++| State | Copy |
++|-------|------|
++| No transactions at all (new user, no data yet) | Headline: `Nothing here yet.` Body: `Transactions will appear once your bank syncs. Usually within an hour.` |
++| Search returned no results | Headline: `No matches.` Body: `Try a different search or clear your filters.` CTA: `Clear filters` |
++| Filter returned no results | Headline: `No transactions in this range.` Body: (none) CTA: `Clear filters` |
++| Offline + no cached data | Headline: `No connection.` Body: `Reconnect to see your activity.` CTA: `Retry` |
++
++---
++
++## 6. Error Message Library
++
++Structure per rule §1: *what happened + what to do*, one sentence each, no "we," no "sorry."
++
++### Connection & sync errors
++
++| Error | Copy |
++|-------|------|
++| Plaid connection failed (retryable) | Headline: `That didn't connect.` Body: `Your bank timed out. Try again in a minute.` CTA: `Try again` |
++| Plaid connection failed (non-retryable, needs different bank) | Headline: `That bank isn't supported yet.` Body: `Most major banks are. Try a different one, or email support@fintrest.com if yours isn't listed.` CTA: `Try a different bank` |
++| Plaid auth expired (reconnection needed) | Headline: `Reconnect your bank.` Body: `Chase needs you to sign in again to keep syncing.` CTA: `Reconnect` |
++| Sync stalled (no new data for 24 hours) | Inline banner on Home: `Chase hasn't synced since yesterday.` Link: `Fix` |
++| Network offline | Full-screen when no cached data: `No connection.` Body: `Reconnect to continue.` CTA: `Retry` |
++| Slow network (request taking >15s) | In-screen toast: `This is taking longer than usual.` (no CTA — auto-dismisses when done) |
++
++### Auth & session errors
++
++| Error | Copy |
++|-------|------|
++| Session expired | Headline: `Signed out for security.` Body: `Your session ended after 7 days of inactivity.` CTA: `Sign in` |
++| Biometric failed (Face ID / Touch ID) | Inline: `Face ID didn't recognize you.` CTA: `Try again` · `Use passcode` |
++| Wrong passcode | Inline: `Passcode doesn't match.` (no "incorrect" — the fact is enough) |
++| Too many passcode attempts | Headline: `Locked for 5 minutes.` Body: `Try again after 5 minutes, or sign out to reset.` |
++
++### Server / system errors
++
++| Error | Copy |
++|-------|------|
++| Generic 500 | Headline: `Something broke.` Body: `This isn't your fault. Try again in a minute.` CTA: `Retry` |
++| Service down (status page flagged) | Headline: `Fintrest is having trouble.` Body: `Updates at status.fintrest.com.` CTA: `Check status` |
++| Rate limit (too many requests) | Headline: `Too many requests.` Body: `Wait 30 seconds and try again.` |
++| App update required | Headline: `Update to continue.` Body: `This version of Fintrest is no longer supported.` CTA: `Update` |
++
++### Form & input errors (inline)
++
++Short. No headline; the field turns its error color and the message sits below.
++
++| Context | Copy |
++|---------|------|
++| Email invalid | `Check the email format.` |
++| Email already used | `An account with this email already exists. Sign in instead.` |
++| Amount zero or negative (where positive expected) | `Enter an amount greater than zero.` |
++| Required field empty | `Required.` |
++| Password too short (V2) | `Must be at least 12 characters.` |
++| 2FA code wrong | `Code doesn't match. Try again.` |
++| 2FA code expired | `Code expired. Request a new one.` |
++
++---
++
++## 7. Confirmations & Dialogs
++
++Structure per rule: **title = action phrased as question** · **body = consequences** · **buttons = labeled with the verb, not OK/Cancel**.
++
++### Sign out
++
++| Element | Copy |
++|---------|------|
++| Title | `Sign out?` |
++| Body | `You'll need to sign in again next time.` |
++| Primary button | `Sign out` |
++| Cancel button | `Stay signed in` |
++
++### Remove an account
++
++| Element | Copy |
++|---------|------|
++| Title | `Remove {Chase Checking}?` |
++| Body | `Past transactions stay in your history. New ones won't sync.` |
++| Primary button (destructive) | `Remove` |
++| Cancel button | `Keep` |
++
++### Delete Fintrest profile (V2, but voice locked)
++
++| Element | Copy |
++|---------|------|
++| Title | `Delete your Fintrest profile?` |
++| Body | `This deletes your profile, connected accounts, and all transaction history. It can't be undone.` |
++| Primary button (destructive) | `Delete permanently` |
++| Cancel button | `Keep profile` |
++
++### Disable biometric login
++
++| Element | Copy |
++|---------|------|
++| Title | `Turn off Face ID?` |
++| Body | `You'll sign in with your passcode instead.` |
++| Primary button | `Turn off` |
++| Cancel button | `Keep on` |
++
++### Discard unsaved note
++
++| Element | Copy |
++|---------|------|
++| Title | `Discard this note?` |
++| Body | `Your changes won't be saved.` |
++| Primary button (destructive) | `Discard` |
++| Cancel button | `Keep editing` |
++
++---
++
++## 8. System Banners & Micro Copy
++
++### Persistent banners (top of screen, dismissible)
++
++| State | Copy |
++|-------|------|
++| Reconnect needed | `Chase needs reconnection.` CTA: `Reconnect` |
++| Syncing in progress | `Syncing.` (auto-dismisses when done; no percentage) |
++| Last synced label | `Synced {2 minutes} ago` (uses relative time) |
++
++### Toasts (transient, 2–3 seconds)
++
++| Event | Copy |
++|-------|------|
++| Category changed | `Category updated.` |
++| Note saved | `Saved.` |
++| Transaction flagged | `Flagged.` |
++| Copy to clipboard | `Copied.` |
++
++All one word + period. No icons in toasts. Toast bg: `carbon-lifted` with a 2px left border in `evergreen`.
++
++### Loading states (where text is shown)
++
++| Context | Copy |
++|---------|------|
++| Initial app boot, data loading | (none — the aperture-open animation is the loader) |
++| Pull-to-refresh | `Syncing…` (only ellipsis permitted in the app) |
++| Connecting account via Plaid | `Reading your accounts.` |
++| Categorizing a transaction (background) | (silent — no spinner, no text) |
++
++### Footer / legal
++
++| Context | Copy |
++|---------|------|
++| Onboarding footer | `By continuing, you agree to our Terms and Privacy Policy.` |
++| Settings → About | `Fintrest · v{1.0.0}` |
++| Settings → About (tap to reveal) | `Built in {location}. Powered by Plaid.` |
++
++---
++
++## 9. Settings Screen Copy
++
++### Top-level sections
++
++| Label |
++|-------|
++| `Profile` |
++| `Security` |
++| `Preferences` |
++| `Help` |
++| `About` |
++
++### Profile
++
++| Field | Label |
++|-------|-------|
++| Name | `Name` |
++| Email | `Email` |
++| Sign out | `Sign out` |
++
++### Security
++
++| Toggle / row | Copy |
++|--------------|------|
++| Face ID | `Sign in with Face ID` |
++| Passcode | `Require passcode` |
++| Passcode — change | `Change passcode` |
++
++### Preferences
++
++| Toggle | Copy |
++|--------|------|
++| Haptic feedback | `Haptic feedback` |
++| Sound | `Sound` |
++| Show delta colors (off by default) | `Show color on gains and losses` |
++| Appearance (V3) | `Appearance` |
++
++### Help
++
++| Row | Copy |
++|-----|------|
++| Support email | `Email support` |
++| Status page | `Service status` |
++| FAQ (V2) | `Frequently asked questions` |
++
++### About
++
++| Row | Copy |
++|-----|------|
++| Version | `Version {1.0.0}` |
++| Privacy policy | `Privacy policy` |
++| Terms | `Terms of service` |
++| Licenses | `Open-source licenses` |
++
++---
++
++## 10. Notification Copy
++
++### Push notifications (V1 policy: near-zero)
++
++The only push notification in V1 is **session expiration**, and only when the user's last active session was over 7 days ago *and* they have biometric disabled. It's functional, not engagement.
++
++| Trigger | Copy |
++|---------|------|
++| Session expired push | Title: `Signed out` · Body: `Sign in to continue.` |
++
++### Push notifications added in V2
++
++| Trigger | Copy |
++|---------|------|
++| Weekly insight ready (Mondays 7am local) | Title: `This week's insight` · Body: `A brief read on your last seven days.` |
++| Large transaction ($1,000+) | Title: `{$2,400}` · Body: `{Rent} · {Chase}` |
++| Reconnection needed | Title: `Reconnect your bank` · Body: `{Chase} needs you to sign in again.` |
++
++**What we never push:**
++- Balance went up or down
++- "You saved $X this week"
++- Stock hit a high or low
++- Streaks, milestones, goals-near-met
++- Marketing ("New feature!")
++
++---
++
++## 11. Accessibility Copy (VoiceOver / screen reader)
++
++Per iOS accessibility guidelines, every interactive element needs a label. Where the label isn't obvious from visible text, the `accessibilityLabel` is specified below.
++
++### Brand marks
++
++| Element | accessibilityLabel |
++|---------|-------------------|
++| V1 aperture icon | `Fintrest` |
++| V2 outlined aperture (loading spinner) | `Loading` |
++| V3 single-blade glyph | `Fintrest mark` |
++
++### Tab bar (V1)
++
++| Tab | accessibilityLabel |
++|-----|-------------------|
++| Home | `Home` |
++| Activity | `Activity` |
++
++Both also include `accessibilityTraits: button, selected` when active.
++
++### Home screen
++
++| Element | accessibilityLabel |
++|---------|-------------------|
++| Hero net worth number | `Net worth, {128 thousand, 402 dollars, 18 cents}` — written out, not digits |
++| Delta strip | `{Up 412 dollars, 80 cents today}` |
++| Sparkline | `Net worth trend, last 90 days` (non-interactive for VoiceOver) |
++| Account card | `{Chase Checking}, balance {2,400 dollars}` |
++| "See all" link | `See all recent activity` |
++
++### Activity screen
++
++| Element | accessibilityLabel |
++|---------|-------------------|
++| Search bar | `Search transactions` |
++| Filter chip (active) | `{Food} filter, selected` |
++| Filter chip (inactive) | `{Food} filter` |
++| Transaction row | `{Blue Bottle Coffee}, {Food}, negative {6 dollars, 50 cents}, {April 20}` |
++
++### Error states
++
++Errors announce with `accessibilityLiveRegion: assertive` so screen readers interrupt. The displayed copy is read verbatim.
++
++---
++
++## 12. Insights Screen Copy (V2 — voice locked now)
++
++The Insights screen is the editorial room. Copy runs in GT Super 18 prose.
++
++### Structure of an insight
++
++Every insight follows the same shape: **observation → context → implication**. Never: "You should..." or "We recommend..."
++
++**Example insight (good):**
++
++> Your spending on food delivery tripled in the last 30 days, from $210 in March to $612 in April. Most of it — $410 — came from five orders over $80, all on weeknights after 9 pm. Late-night delivery typically signals skipped dinners earlier in the day, not a taste for eating out.
++
++**Example insight (bad — do not write like this):**
++
++> 🍕 Wow! You ordered a LOT of food delivery this month! You should try cooking at home to save money! 💰
++
++Observe the difference: the good version uses specific numbers, states a pattern, and ends on an implication without a prescription. It trusts the user to know what to do.
++
++### Insight headers
++
++| Element | Copy |
++|---------|------|
++| Section label | `This week` |
++| Week header | `Week of {April 20}` |
++| "Pinned" section | `Pinned` |
++
++### Ask bar
++
++| Element | Copy |
++|---------|------|
++| Placeholder | `Ask Fintrest something` |
++| Empty result | `Not enough data yet.` |
++
++Do not place a sparkle / stars icon. Do not say "AI" or "Powered by AI."
++
++---
++
++## 13. Marketing Surface Copy (brief — for fintrest.com)
++
++For when the landing page spec is built. Voice is identical to the product.
++
++### Homepage hero
++
++**Primary option (ship):**
++
++> Grow what you have. Quietly.
++>
++> Fintrest reads your accounts, finds the patterns, and tells you what matters. Nothing more.
++
++**Alternative:**
++
++> The calm way to watch your money grow.
++>
++> Fintrest is a quieter kind of finance app.
++
++**Primary CTA:** `Get the app` (not "Download" — sounds 2010-era)
++
++### What we don't write
++
++- No "Join 10,000+ users"
++- No "Trusted by"
++- No "As featured in"
++- No carousel of press logos
++- No countdown timer
++
++---
++
++## 14. Localization Notes (for future translators)
++
++Fintrest is English-only in V1. These notes lock the terms and idioms for later.
++
++### Terms that must translate carefully
++- **"Grow what you have. Quietly."** — the thesis. The word "quietly" carries the brand. Translators should prioritize the feeling of restraint over a literal translation.
++- **"The week in review"** — editorial idiom. In languages where this doesn't carry the same editorial weight, prefer "This week" or equivalent.
++- **"Connected."** — must translate to a single word or short phrase; not "Successfully connected."
++- **"Synced."** — same.
++
++### Character expansion
++- German translations typically run 30% longer than English. Headline areas (`Step 2`, `Sign in`, `Get started`) should have room for +30% length.
++- Button widths in the RN codebase should be flex, not fixed.
++
++### Numbers & currency
++- Always render via `Intl.NumberFormat` with the user's locale for grouping separators.
++- Mono font renders digits identically across locales — don't swap fonts for numerals.
++- Currency symbol placement follows the locale's convention, but the symbol itself stays USD until we launch international.
++
++### Tone
++- The restraint rule is universal but expressed differently in each language. Translators should read §1 before touching any string. Exclamation points are banned in every language, including those that traditionally use them more (Spanish, French, Portuguese).
++
++---
++
++## 15. Copy Review Checklist (before merging any new string)
++
++Before a copy string lands in the codebase:
++
++- [ ] Does it follow rule 1 (editorial voice, not coaching)?
++- [ ] Is there an exclamation point? (If yes: delete it.)
++- [ ] Does it use "we" unnecessarily? (If yes: rewrite.)
++- [ ] Are numbers in digits, not words?
++- [ ] Do the terms match §2 glossary exactly?
++- [ ] Can any word be cut without losing meaning? (If yes: cut.)
++- [ ] If it's an error, does it say what happened + what to do?
++- [ ] If it's a confirmation, are the buttons labeled with verbs?
++- [ ] If it's an empty state, does it say what, why, and how to start?
++- [ ] Would a 55-year-old editor at a serious magazine nod at this line?
++
++If any answer is no, revise.
++
++---
++
++*v1.0 — voice locked. File additions against this doc, do not fork.*
+diff --git a/frontend/public/favicon.svg b/frontend/public/favicon.svg
+new file mode 100644
+index 0000000..da064ad
+--- /dev/null
++++ b/frontend/public/favicon.svg
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!-- Fintrest — Favicon (V2 outlined aperture on Carbon) -->
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
++  <defs>
++    <path id="b" d="M 650.56 432 L 844.55 320 A 384 384 0 0 0 512 128 C 540 220, 580 280, 512 352 Z"/>
++  </defs>
++  <rect width="1024" height="1024" rx="229" ry="229" fill="#0F0F10"/>
++  <g fill="#FAFAF7">
++    <use href="#b"/>
++    <use href="#b" transform="rotate(60 512 512)"/>
++    <use href="#b" transform="rotate(120 512 512)"/>
++    <use href="#b" transform="rotate(180 512 512)"/>
++    <use href="#b" transform="rotate(240 512 512)"/>
++    <use href="#b" transform="rotate(300 512 512)"/>
++  </g>
++</svg>
+diff --git a/frontend/public/index.html b/frontend/public/index.html
+index aa069f2..0aec6bb 100644
+--- a/frontend/public/index.html
++++ b/frontend/public/index.html
+@@ -2,42 +2,38 @@
+ <html lang="en">
+   <head>
+     <meta charset="utf-8" />
+-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+-    <meta name="theme-color" content="#000000" />
++    <link rel="icon" type="image/svg+xml" href="%PUBLIC_URL%/favicon.svg" />
++    <link rel="alternate icon" href="%PUBLIC_URL%/favicon.ico" />
++    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
++    <meta name="theme-color" content="#0A0B0C" />
+     <meta
+       name="description"
+-      content="Web site created using create-react-app"
++      content="Fintrest — Money, made clear. A calm, modern companion for your financial life."
+     />
++    <meta name="color-scheme" content="dark" />
++
++    <!-- Open Graph / social -->
++    <meta property="og:title" content="Fintrest — Money, made clear." />
++    <meta property="og:description" content="A calm, modern companion for your financial life." />
++    <meta property="og:type" content="website" />
++    <meta property="og:url" content="https://fintrest.com" />
++    <meta name="twitter:card" content="summary_large_image" />
++
+     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+-    <!--
+-      manifest.json provides metadata used when your web app is installed on a
+-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
+-    -->
+     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+-    <!--
+-      Notice the use of %PUBLIC_URL% in the tags above.
+-      It will be replaced with the URL of the `public` folder during the build.
+-      Only files inside the `public` folder can be referenced from the HTML.
+ 
+-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
+-      work correctly both with client-side routing and a non-root public URL.
+-      Learn how to configure a non-root public URL by running `npm run build`.
+-    -->
+-    <title>React App</title>
++    <!-- Fintrest typography -->
++    <link rel="preconnect" href="https://fonts.googleapis.com" />
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
++    <link
++      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
++      rel="stylesheet"
++    />
++
++    <title>Fintrest — Money, made clear.</title>
+   </head>
+   <body>
+-    <noscript>You need to enable JavaScript to run this app.</noscript>
++    <noscript>You need to enable JavaScript to use Fintrest.</noscript>
+     <div id="root"></div>
+-    <!--
+-      This HTML file is a template.
+-      If you open it directly in the browser, you will see an empty page.
+-
+-      You can add webfonts, meta tags, or analytics to this file.
+-      The build step will place the bundled scripts into the <body> tag.
+-
+-      To begin the development, run `npm start` or `yarn start`.
+-      To create a production bundle, use `npm run build` or `yarn build`.
+-    -->
+   </body>
+ </html>
+diff --git a/frontend/public/landing.html b/frontend/public/landing.html
+new file mode 100644
+index 0000000..9aca257
+--- /dev/null
++++ b/frontend/public/landing.html
+@@ -0,0 +1,341 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
++  <title>Fintrest — Money, made clear.</title>
++  <meta name="description" content="Fintrest is a calm, modern companion for your financial life. Accounts, investments, and intent — in one quiet place." />
++  <meta name="theme-color" content="#0A0B0C" />
++  <meta name="color-scheme" content="dark" />
++
++  <meta property="og:title" content="Fintrest — Money, made clear." />
++  <meta property="og:description" content="A calm, modern companion for your financial life." />
++  <meta property="og:type" content="website" />
++  <meta name="twitter:card" content="summary_large_image" />
++
++  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
++  <link rel="preconnect" href="https://fonts.googleapis.com" />
++  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
++  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
++
++  <style>
++    :root {
++      --carbon: #0F0F10;
++      --carbon-lifted: #14181A;
++      --carbon-border: #1C1F22;
++      --obsidian: #0A0B0C;
++      --pearl: #FAFAF7;
++      --mist: #A6ADB4;
++      --fog: #6B7178;
++      --evergreen: #1F5C46;
++      --ember: #B24A2A;
++      --font-editorial: "Fraunces", Georgia, serif;
++      --font-ui: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
++      --font-mono: "JetBrains Mono", ui-monospace, monospace;
++    }
++
++    * { box-sizing: border-box; margin: 0; padding: 0; }
++    html { scroll-behavior: smooth; }
++
++    body {
++      background: var(--obsidian);
++      color: var(--pearl);
++      font-family: var(--font-ui);
++      font-size: 16px;
++      line-height: 1.5;
++      -webkit-font-smoothing: antialiased;
++      -moz-osx-font-smoothing: grayscale;
++      text-rendering: optimizeLegibility;
++      overflow-x: hidden;
++    }
++
++    a { color: inherit; text-decoration: none; }
++
++    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
++
++    /* ─── Nav ─── */
++    nav {
++      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
++      background: rgba(10, 11, 12, 0.72);
++      backdrop-filter: saturate(180%) blur(20px);
++      -webkit-backdrop-filter: saturate(180%) blur(20px);
++      border-bottom: 1px solid var(--carbon-border);
++    }
++    .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
++    .brand { display: flex; align-items: center; gap: 12px; font-weight: 500; letter-spacing: -0.01em; }
++    .nav-links { display: flex; gap: 32px; align-items: center; color: var(--mist); font-size: 14px; }
++    .nav-links a:hover { color: var(--pearl); }
++    .btn {
++      font-family: var(--font-ui); font-size: 14px; font-weight: 500;
++      padding: 10px 18px; border-radius: 999px; border: 1px solid transparent;
++      cursor: pointer; transition: all 240ms cubic-bezier(0.22, 1, 0.36, 1);
++      display: inline-flex; align-items: center; gap: 8px;
++    }
++    .btn-primary { background: var(--pearl); color: var(--obsidian); }
++    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(250, 250, 247, 0.12); }
++    .btn-ghost { background: transparent; color: var(--pearl); border-color: var(--carbon-border); }
++    .btn-ghost:hover { border-color: var(--mist); }
++
++    @media (max-width: 720px) { .nav-links a:not(:last-child) { display: none; } }
++
++    /* ─── Hero ─── */
++    .hero {
++      min-height: 100vh; display: flex; flex-direction: column;
++      align-items: center; justify-content: center; padding: 120px 24px 80px;
++      text-align: center; position: relative;
++    }
++    .hero::before {
++      content: ""; position: absolute; inset: 0; z-index: 0;
++      background: radial-gradient(ellipse at 50% 30%, rgba(31, 92, 70, 0.18) 0%, transparent 60%);
++      pointer-events: none;
++    }
++    .hero-content { position: relative; z-index: 1; max-width: 820px; }
++
++    .eyebrow {
++      font-family: var(--font-ui); font-size: 12px; font-weight: 500;
++      text-transform: uppercase; letter-spacing: 0.12em;
++      color: var(--mist); margin-bottom: 32px;
++    }
++    .eyebrow .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--evergreen); margin-right: 8px; vertical-align: 1px; }
++
++    h1 {
++      font-family: var(--font-editorial); font-weight: 400;
++      font-size: clamp(44px, 7vw, 84px); line-height: 1.02;
++      letter-spacing: -0.025em; margin-bottom: 24px;
++    }
++    h1 em { font-style: italic; color: var(--mist); }
++
++    .lede {
++      font-size: clamp(17px, 1.6vw, 20px); color: var(--mist);
++      max-width: 560px; margin: 0 auto 40px; line-height: 1.55;
++    }
++    .hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
++
++    /* ─── Section primitives ─── */
++    section { padding: 120px 0; position: relative; }
++    .section-label {
++      font-family: var(--font-ui); font-size: 12px; font-weight: 500;
++      text-transform: uppercase; letter-spacing: 0.12em;
++      color: var(--fog); margin-bottom: 16px;
++    }
++    .section-title {
++      font-family: var(--font-editorial); font-weight: 400;
++      font-size: clamp(32px, 4.5vw, 52px); line-height: 1.06;
++      letter-spacing: -0.02em; margin-bottom: 24px; max-width: 720px;
++    }
++    .section-body { color: var(--mist); max-width: 600px; font-size: 17px; line-height: 1.6; }
++
++    /* ─── Triad feature grid ─── */
++    .triad {
++      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
++      background: var(--carbon-border); border: 1px solid var(--carbon-border);
++      border-radius: 16px; overflow: hidden; margin-top: 64px;
++    }
++    .triad-cell { background: var(--carbon); padding: 40px 32px; min-height: 280px; }
++    .triad-cell h3 {
++      font-family: var(--font-editorial); font-weight: 400;
++      font-size: 24px; line-height: 1.2; letter-spacing: -0.01em;
++      margin: 16px 0 12px;
++    }
++    .triad-cell p { color: var(--mist); font-size: 15px; line-height: 1.55; }
++    .triad-cell .ico {
++      width: 40px; height: 40px; border-radius: 12px;
++      background: var(--carbon-lifted); border: 1px solid var(--carbon-border);
++      display: flex; align-items: center; justify-content: center;
++    }
++    @media (max-width: 900px) { .triad { grid-template-columns: 1fr; } }
++
++    /* ─── Quote block ─── */
++    .quote {
++      font-family: var(--font-editorial); font-weight: 400;
++      font-size: clamp(28px, 3.5vw, 40px); line-height: 1.2;
++      letter-spacing: -0.015em; max-width: 820px; color: var(--pearl);
++    }
++    .quote .cite { display: block; margin-top: 24px; font-family: var(--font-ui); font-size: 13px; color: var(--fog); letter-spacing: 0.04em; text-transform: uppercase; }
++
++    /* ─── Waitlist ─── */
++    .waitlist-card {
++      background: var(--carbon); border: 1px solid var(--carbon-border);
++      border-radius: 20px; padding: 48px; text-align: center;
++      max-width: 560px; margin: 0 auto;
++    }
++    .waitlist-form {
++      display: flex; gap: 8px; margin-top: 24px;
++      background: var(--obsidian); padding: 6px;
++      border-radius: 999px; border: 1px solid var(--carbon-border);
++    }
++    .waitlist-form input {
++      flex: 1; background: transparent; border: none; outline: none;
++      color: var(--pearl); font-family: var(--font-ui); font-size: 15px;
++      padding: 12px 18px;
++    }
++    .waitlist-form input::placeholder { color: var(--fog); }
++    .waitlist-form button {
++      background: var(--pearl); color: var(--obsidian); border: none;
++      border-radius: 999px; padding: 12px 24px; font-family: var(--font-ui);
++      font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap;
++    }
++    .waitlist-note { color: var(--fog); font-size: 13px; margin-top: 16px; }
++
++    /* ─── Footer ─── */
++    footer {
++      padding: 64px 24px 48px; border-top: 1px solid var(--carbon-border);
++      color: var(--fog); font-size: 13px;
++    }
++    .footer-inner {
++      max-width: 1200px; margin: 0 auto;
++      display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap;
++    }
++    .footer-links { display: flex; gap: 24px; }
++    .footer-links a:hover { color: var(--pearl); }
++
++    /* Editorial divider */
++    .rule {
++      height: 1px; background: var(--carbon-border); margin: 0 auto;
++      max-width: 1200px;
++    }
++
++    /* Number style */
++    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
++  </style>
++</head>
++<body>
++
++  <nav>
++    <div class="container nav-inner">
++      <a href="#" class="brand" aria-label="Fintrest home">
++        <svg viewBox="0 0 1024 1024" width="24" height="24" role="img" aria-hidden="true">
++          <defs><path id="b" d="M 650.56 432 L 844.55 320 A 384 384 0 0 0 512 128 C 540 220, 580 280, 512 352 Z"/></defs>
++          <g fill="#FAFAF7">
++            <use href="#b"/><use href="#b" transform="rotate(60 512 512)"/><use href="#b" transform="rotate(120 512 512)"/>
++            <use href="#b" transform="rotate(180 512 512)"/><use href="#b" transform="rotate(240 512 512)"/><use href="#b" transform="rotate(300 512 512)"/>
++          </g>
++        </svg>
++        <span>Fintrest</span>
++      </a>
++      <div class="nav-links">
++        <a href="#how">How it works</a>
++        <a href="#why">Why Fintrest</a>
++        <a href="#waitlist" class="btn btn-ghost">Join waitlist</a>
++      </div>
++    </div>
++  </nav>
++
++  <!-- ─── Hero ─── -->
++  <header class="hero">
++    <div class="hero-content">
++      <div class="eyebrow"><span class="dot"></span> In private beta · 2026</div>
++      <h1>Money,<br><em>made clear.</em></h1>
++      <p class="lede">
++        Fintrest is a calm companion for your financial life — accounts, investments, and intent, in one quiet place.
++        No streaks. No shouting. No gamified dopamine. Just clarity.
++      </p>
++      <div class="hero-ctas">
++        <a href="#waitlist" class="btn btn-primary">
++          Join the waitlist
++          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
++            <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
++          </svg>
++        </a>
++        <a href="#how" class="btn btn-ghost">See how it works</a>
++      </div>
++    </div>
++  </header>
++
++  <div class="rule"></div>
++
++  <!-- ─── Triad ─── -->
++  <section id="how">
++    <div class="container">
++      <div class="section-label">Three disciplines, one surface</div>
++      <h2 class="section-title">Simple like Apple. Trustworthy like a bank. Smart, without the theatre.</h2>
++      <p class="section-body">Most finance apps pick one. We hold the line on all three — and remove the clutter that used to force a trade-off.</p>
++
++      <div class="triad">
++        <div class="triad-cell">
++          <div class="ico">
++            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FAFAF7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
++              <circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/>
++            </svg>
++          </div>
++          <h3>One clear view</h3>
++          <p>Every account, every position, on one page. No tabs. No tiny icons. Editorial typography over dashboards that look like cockpits.</p>
++        </div>
++        <div class="triad-cell">
++          <div class="ico">
++            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FAFAF7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
++              <path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z"/>
++            </svg>
++          </div>
++          <h3>Institution-grade trust</h3>
++          <p>Bank-level encryption, independent audits, and read-only by default. Your money lives at your bank — not in ours.</p>
++        </div>
++        <div class="triad-cell">
++          <div class="ico">
++            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FAFAF7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
++              <path d="M3 12h4l3-8 4 16 3-8h4"/>
++            </svg>
++          </div>
++          <h3>Answers, not alerts</h3>
++          <p>Ask a plain-English question about your money. Get a plain-English answer — with the numbers it was built on.</p>
++        </div>
++      </div>
++    </div>
++  </section>
++
++  <div class="rule"></div>
++
++  <!-- ─── Why ─── -->
++  <section id="why">
++    <div class="container">
++      <div class="section-label">Why Fintrest</div>
++      <blockquote class="quote">
++        Most finance apps are loud because they confuse activity with progress. We believe clarity, not noise, is what actually compounds.
++        <span class="cite">— The Fintrest team</span>
++      </blockquote>
++    </div>
++  </section>
++
++  <div class="rule"></div>
++
++  <!-- ─── Waitlist ─── -->
++  <section id="waitlist">
++    <div class="container">
++      <div class="waitlist-card">
++        <div class="section-label" style="margin-bottom: 8px;">Private beta</div>
++        <h2 style="font-family: var(--font-editorial); font-weight: 400; font-size: 36px; line-height: 1.08; letter-spacing: -0.02em;">Be among the first <em>500</em>.</h2>
++        <p style="color: var(--mist); margin-top: 12px; font-size: 15px;">
++          We're onboarding deliberately. Leave your email and we'll reach out when there's space.
++        </p>
++        <form class="waitlist-form" onsubmit="event.preventDefault(); this.querySelector('button').innerText='On the list ✓';">
++          <input type="email" placeholder="you@example.com" required aria-label="Email" />
++          <button type="submit">Request access</button>
++        </form>
++        <p class="waitlist-note">No spam. Unsubscribe any time.</p>
++      </div>
++    </div>
++  </section>
++
++  <footer>
++    <div class="footer-inner">
++      <div class="brand">
++        <svg viewBox="0 0 1024 1024" width="18" height="18" role="img" aria-hidden="true">
++          <defs><path id="bf" d="M 650.56 432 L 844.55 320 A 384 384 0 0 0 512 128 C 540 220, 580 280, 512 352 Z"/></defs>
++          <g fill="#6B7178">
++            <use href="#bf"/><use href="#bf" transform="rotate(60 512 512)"/><use href="#bf" transform="rotate(120 512 512)"/>
++            <use href="#bf" transform="rotate(180 512 512)"/><use href="#bf" transform="rotate(240 512 512)"/><use href="#bf" transform="rotate(300 512 512)"/>
++          </g>
++        </svg>
++        <span class="mono">© 2026 Fintrest</span>
++      </div>
++      <div class="footer-links">
++        <a href="#">Privacy</a>
++        <a href="#">Terms</a>
++        <a href="#">Security</a>
++        <a href="mailto:hello@fintrest.com">Contact</a>
++      </div>
++    </div>
++  </footer>
++
++</body>
++</html>
+diff --git a/frontend/public/manifest.json b/frontend/public/manifest.json
+index 080d6c7..d750022 100644
+--- a/frontend/public/manifest.json
++++ b/frontend/public/manifest.json
+@@ -1,7 +1,13 @@
+ {
+-  "short_name": "React App",
+-  "name": "Create React App Sample",
++  "short_name": "Fintrest",
++  "name": "Fintrest — Money, made clear.",
++  "description": "A calm, modern companion for your financial life.",
+   "icons": [
++    {
++      "src": "favicon.svg",
++      "type": "image/svg+xml",
++      "sizes": "any"
++    },
+     {
+       "src": "favicon.ico",
+       "sizes": "64x64 32x32 24x24 16x16",
+@@ -20,6 +26,6 @@
+   ],
+   "start_url": ".",
+   "display": "standalone",
+-  "theme_color": "#000000",
+-  "background_color": "#ffffff"
++  "theme_color": "#0A0B0C",
++  "background_color": "#0A0B0C"
+ }
+diff --git a/frontend/src/Aperture.jsx b/frontend/src/Aperture.jsx
+new file mode 100644
+index 0000000..a01aa98
+--- /dev/null
++++ b/frontend/src/Aperture.jsx
+@@ -0,0 +1,92 @@
++// Fintrest — Aperture Mark (React component)
++// Geometry is locked in fintrest-aperture-spec.md §1.
++// Do not edit path `d`, rotation angles, or viewBox without updating the spec.
++//
++// Usage:
++//   <Aperture />                            → V1 solid, 40px
++//   <Aperture variant="outline" size={28}/> → V2 outlined
++//   <Aperture variant="glyph" size={48}/>   → V3 single blade
++//   <Aperture color="#FAFAF7" background="#0F0F10" withIconBg />
++//
++// All variants render inside a 1024×1024 viewBox so strokes scale predictably.
++
++import React from "react";
++
++const BLADE_PATH =
++  "M 650.56 432 L 844.55 320 A 384 384 0 0 0 512 128 C 540 220, 580 280, 512 352 Z";
++
++const ROTATIONS = [0, 60, 120, 180, 240, 300];
++
++function Aperture({
++  variant = "solid",       // "solid" | "outline" | "glyph"
++  size = 40,
++  color = "#FAFAF7",
++  background = "transparent",
++  withIconBg = false,       // wraps the mark in the 229-radius squircle at 1024 scale
++  strokeWidth = 12,         // only used by "outline" — calibrated for the 1024 viewBox
++  title = "Fintrest",
++  ...rest
++}) {
++  const bg = withIconBg ? (
++    <rect width="1024" height="1024" rx="229" ry="229" fill={background} />
++  ) : background !== "transparent" ? (
++    <rect width="1024" height="1024" fill={background} />
++  ) : null;
++
++  let marks = null;
++  if (variant === "glyph") {
++    // Single blade rotated to the 150° position (per spec V3)
++    marks = (
++      <path d={BLADE_PATH} fill={color} transform="rotate(120 512 512)" />
++    );
++  } else if (variant === "outline") {
++    marks = (
++      <g
++        fill="none"
++        stroke={color}
++        strokeWidth={strokeWidth}
++        strokeLinejoin="miter"
++        strokeMiterlimit="4"
++      >
++        {ROTATIONS.map((angle) => (
++          <path
++            key={angle}
++            d={BLADE_PATH}
++            transform={angle === 0 ? undefined : `rotate(${angle} 512 512)`}
++          />
++        ))}
++      </g>
++    );
++  } else {
++    // solid
++    marks = (
++      <g fill={color}>
++        {ROTATIONS.map((angle) => (
++          <path
++            key={angle}
++            d={BLADE_PATH}
++            transform={angle === 0 ? undefined : `rotate(${angle} 512 512)`}
++          />
++        ))}
++      </g>
++    );
++  }
++
++  return (
++    <svg
++      xmlns="http://www.w3.org/2000/svg"
++      viewBox="0 0 1024 1024"
++      width={size}
++      height={size}
++      role="img"
++      aria-label={title}
++      {...rest}
++    >
++      <title>{title}</title>
++      {bg}
++      {marks}
++    </svg>
++  );
++}
++
++export default Aperture;
+diff --git a/frontend/src/App.js b/frontend/src/App.js
+index 2d10e98..a4a092a 100644
+--- a/frontend/src/App.js
++++ b/frontend/src/App.js
+@@ -3,6 +3,7 @@ import {
+   AreaChart, Area, XAxis, YAxis, Tooltip,
+   ResponsiveContainer, CartesianGrid
+ } from "recharts";
++import Aperture from "./Aperture";
+ 
+ const API_URL = process.env.REACT_APP_API_URL || "https://fintrest-go.onrender.com";
+ 
+@@ -628,7 +629,9 @@ function AuthModal({ onSuccess }) {
+     <div style={{ position: "fixed", inset: 0, background: "rgba(1,4,9,0.92)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+       <div style={{ background: "#0d1117", border: "1px solid #21262d", borderRadius: 20, padding: 28, width: "100%", maxWidth: 360, boxShadow: "0 24px 80px rgba(0,0,0,0.6)" }}>
+         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
+-          <div style={{ width: 32, height: 32, background: "#f7c843", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>💹</div>
++          <div style={{ width: 32, height: 32, background: "#0F0F10", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #1C1F22" }}>
++            <Aperture size={20} color="#FAFAF7" />
++          </div>
+           <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 18, fontWeight: 700, color: "#e6edf3" }}>Fintrest</div>
+         </div>
+         <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+@@ -675,7 +678,7 @@ export default function App() {
+ 
+   const [watchlist, setWatchlist]               = useState(WATCHLIST_DEFAULT);
+   const [selectedStock, setSelectedStock]       = useState(WATCHLIST_DEFAULT[0]);
+-  const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hello! I'm Fintrest, your AI-powered financial advisor. Ask about US stocks, Indian stocks (NSE/BSE), or crypto.", sources: [] }]);
++  const [messages, setMessages]                 = useState([{ role: "assistant", content: "Hi, I'm Fintrest. Ask me about US stocks, Indian equities (NSE/BSE), or crypto — and I'll tell you what the numbers actually say.", sources: [] }]);
+   const [input, setInput]                       = useState("");
+   const [loading, setLoading]                   = useState(false);
+   const [timeRange, setTimeRange]               = useState("7d");
+@@ -1176,7 +1179,9 @@ export default function App() {
+ 
+         <header style={{ borderBottom: "1px solid #21262d", padding: isMobile ? "10px 16px" : "12px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#0d1117" }}>
+           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+-            <div style={{ background: "#f7c843", padding: "4px 8px", borderRadius: 8, color: "#0d1117" }}>💹</div>
++            <div style={{ background: "#0F0F10", padding: "4px 8px", borderRadius: 8, border: "1px solid #1C1F22", display: "flex", alignItems: "center" }}>
++              <Aperture size={18} color="#FAFAF7" />
++            </div>
+             <span style={{ fontWeight: 700, fontSize: 18 }}>Fintrest</span>
+           </div>
+           <div style={{ display: "flex", gap: isMobile ? 6 : 10, flexShrink: 0 }}>
+diff --git a/frontend/src/index.css b/frontend/src/index.css
+index 6e0f3da..6c1ae8f 100644
+--- a/frontend/src/index.css
++++ b/frontend/src/index.css
+@@ -1,15 +1,116 @@
++/* Fintrest — Global Styles
++   Consumed across the whole app. Do not override colors here locally;
++   add new tokens to tokens.js and surface them here as CSS variables. */
++
++:root {
++  /* Surfaces */
++  --carbon:         #0F0F10;
++  --carbon-lifted:  #14181A;
++  --carbon-border:  #1C1F22;
++  --obsidian:       #0A0B0C;
++
++  /* Text */
++  --pearl:          #FAFAF7;
++  --mist:           #A6ADB4;
++  --fog:            #6B7178;
++
++  /* Accents */
++  --evergreen:      #1F5C46;
++  --evergreen-glow: rgba(31, 92, 70, 0.35);
++  --ember:          #B24A2A;
++
++  /* Utility */
++  --hairline:       rgba(250, 250, 247, 0.08);
++  --overlay:        rgba(5, 5, 6, 0.72);
++
++  /* Typography */
++  --font-editorial: "Fraunces", Georgia, serif;
++  --font-ui:        "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
++  --font-mono:      "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
++
++  /* Radii */
++  --radius-sm:      8px;
++  --radius-md:      12px;
++  --radius-lg:      16px;
++  --radius-pill:    999px;
++
++  /* Motion */
++  --ease-standard:  cubic-bezier(0.2, 0.0, 0.0, 1.0);
++  --ease-quint:     cubic-bezier(0.22, 1, 0.36, 1);
++  --dur-fast:       160ms;
++  --dur-base:       240ms;
++  --dur-smooth:     280ms;
++}
++
++*, *::before, *::after { box-sizing: border-box; }
++
++html, body, #root { height: 100%; }
++
+ body {
+   margin: 0;
+-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+-    sans-serif;
++  background: var(--obsidian);
++  color: var(--pearl);
++  font-family: var(--font-ui);
++  font-size: 16px;
++  line-height: 1.5;
+   -webkit-font-smoothing: antialiased;
+   -moz-osx-font-smoothing: grayscale;
++  text-rendering: optimizeLegibility;
++}
++
++code { font-family: var(--font-mono); }
++
++/* Numbers should always be mono — opt in via .num */
++.num, .mono {
++  font-family: var(--font-mono);
++  font-variant-numeric: tabular-nums;
++  font-feature-settings: "tnum" 1;
++}
++
++/* Editorial display — opt in via .editorial */
++.editorial {
++  font-family: var(--font-editorial);
++  font-weight: 400;
++  letter-spacing: -0.02em;
++  line-height: 1.04;
++}
++
++/* Small-caps label */
++.label {
++  font-family: var(--font-ui);
++  font-size: 12px;
++  font-weight: 500;
++  letter-spacing: 0.06em;
++  text-transform: uppercase;
++  color: var(--mist);
++}
++
++/* Selection */
++::selection { background: var(--evergreen); color: var(--pearl); }
++
++/* Scrollbar — subtle on dark */
++::-webkit-scrollbar { width: 8px; height: 8px; }
++::-webkit-scrollbar-track { background: transparent; }
++::-webkit-scrollbar-thumb {
++  background: var(--carbon-border);
++  border-radius: var(--radius-pill);
++}
++::-webkit-scrollbar-thumb:hover { background: var(--fog); }
++
++/* Focus rings — accessible on dark */
++:focus-visible {
++  outline: 2px solid var(--pearl);
++  outline-offset: 2px;
++  border-radius: 2px;
+ }
+ 
+-code {
+-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+-    monospace;
++/* Reduced motion */
++@media (prefers-reduced-motion: reduce) {
++  *, *::before, *::after {
++    animation-duration: 0.01ms !important;
++    animation-iteration-count: 1 !important;
++    transition-duration: 0.01ms !important;
++  }
+ }
+ 
+ /* Visible focus + hover state for the chart's "open on TradingView"
+diff --git a/frontend/src/tokens.js b/frontend/src/tokens.js
+new file mode 100644
+index 0000000..16b8aa7
+--- /dev/null
++++ b/frontend/src/tokens.js
+@@ -0,0 +1,103 @@
++// Fintrest Design Tokens — v1.0
++// Source of truth: fintrest-build-spec.md §2
++// Do not redefine colors, spacing, radii, or motion values anywhere else.
++// If you need a value that isn't here, add it here first, then consume it.
++
++export const colors = {
++  // Surfaces (dark-mode first)
++  carbon:        "#0F0F10",
++  carbonLifted:  "#14181A",
++  carbonBorder:  "#1C1F22",
++  obsidian:      "#0A0B0C",
++
++  // Text
++  pearl:         "#FAFAF7",
++  mist:          "#A6ADB4",
++  fog:           "#6B7178",
++
++  // Accents (used sparingly — never on every positive number)
++  evergreen:     "#1F5C46",
++  evergreenGlow: "rgba(31, 92, 70, 0.35)",
++  ember:         "#B24A2A",
++
++  // Utility
++  hairline:      "rgba(250, 250, 247, 0.08)",
++  overlay:       "rgba(5, 5, 6, 0.72)",
++};
++
++export const spacing = {
++  xs:  4,
++  sm:  8,
++  md:  12,
++  lg:  16,
++  xl:  24,
++  xxl: 32,
++  x3:  48,
++  x4:  64,
++  x5:  96,
++  x6:  128,
++};
++
++export const radii = {
++  sm:   8,
++  md:   12,
++  lg:   16,
++  pill: 999,
++  icon: 229, // iOS app icon squircle on 1024
++};
++
++export const typography = {
++  fontFamilies: {
++    editorial: `"Fraunces", "GT Super Display", Georgia, serif`,
++    ui:        `"Inter", "Neue Haas Grotesk", -apple-system, BlinkMacSystemFont, sans-serif`,
++    mono:      `"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace`,
++  },
++  // Display scale — editorial serif, tight tracking
++  display: {
++    xl: { size: 72, leading: 1.02, tracking: "-0.02em", weight: 400 },
++    lg: { size: 56, leading: 1.04, tracking: "-0.02em", weight: 400 },
++    md: { size: 40, leading: 1.08, tracking: "-0.015em", weight: 400 },
++  },
++  // UI scale — Inter
++  ui: {
++    body:    { size: 16, leading: 1.5, tracking: "0", weight: 400 },
++    bodySm:  { size: 14, leading: 1.45, tracking: "0", weight: 400 },
++    label:   { size: 12, leading: 1.3, tracking: "0.06em", weight: 500, transform: "uppercase" },
++    number:  { size: 16, leading: 1.2, tracking: "0", weight: 500, family: "mono" },
++  },
++};
++
++export const motion = {
++  durations: {
++    instant: 80,
++    fast:    160,
++    base:    240,
++    smooth:  280,
++    slow:    480,
++    intro:   800,
++  },
++  easings: {
++    standard:  "cubic-bezier(0.2, 0.0, 0.0, 1.0)",
++    quintOut:  "cubic-bezier(0.22, 1, 0.36, 1)",
++    cubicInOut:"cubic-bezier(0.65, 0, 0.35, 1)",
++  },
++};
++
++export const shadows = {
++  sm: "0 1px 2px rgba(0, 0, 0, 0.4)",
++  md: "0 4px 16px rgba(0, 0, 0, 0.32)",
++  lg: "0 24px 64px rgba(0, 0, 0, 0.48)",
++  glow: `0 0 48px ${colors.evergreenGlow}`,
++};
++
++export const breakpoints = {
++  sm:  480,
++  md:  768,
++  lg:  1024,
++  xl:  1440,
++};
++
++// Convenience: the default export bundles everything so consumers can do
++// `import tokens from "./tokens";` and access tokens.colors.carbon.
++const tokens = { colors, spacing, radii, typography, motion, shadows, breakpoints };
++export default tokens;
+-- 
+2.34.1
+
