@@ -1,4 +1,4 @@
-# Fintrest — YC Application Video Script (v2 — Product-First)
+# Fintrest — YC Application Video Script (v3 — Product + Business Model)
 **Duration:** ~3 minutes | **Pace:** Calm, confident, direct to camera
 **Speaker:** Ayush Verma, Founder — Fintrest
 
@@ -65,44 +65,69 @@ All of this. India-only. Built in weeks. By one CSE student."
 
 ---
 
-## [1:45 – 2:10] THE MARKET — Why this is a massive bet
+## [1:45 – 2:05] THE MARKET — Why this is a massive bet
 
 *(Data mode. Crisp and confident.)*
 
-"India is not a small market for this.
+"India is not a small market.
 
-We have the youngest investor demographic in the world.
-Zerodha alone onboards over 300,000 new users every month.
-The Indian mutual fund industry crossed ₹50 lakh crore in AUM last year.
+80 million demat accounts, growing 30% a year.
+Zerodha onboards 300,000 new users every single month.
+The Indian mutual fund industry just crossed ₹50 lakh crore in AUM.
 
-And yet — there is no AI-native platform built for this audience.
-Every major finance tool is either US-first or built for advanced traders.
+This is the world's fastest-growing retail investor market —
+and there is no AI-native platform built for it.
 
-Fintrest is built from the ground up for the Indian beginner —
-in INR, on NSE and BSE, with Indian stocks, Indian context, Indian language."
+That's the gap Fintrest fills."
 
 ---
 
-## [2:10 – 2:40] WHY ME — The founder angle
+## [2:05 – 2:35] THE BUSINESS MODEL — How we make money
+
+*(Confident. This is where most student founders fumble — don't.)*
+
+"The business model is built around one insight:
+Indians don't pay for financial information — but brokers and fintechs
+pay a lot to acquire financially-active users.
+
+So Fintrest is free for users. Always.
+
+We make money three ways.
+
+First — **broker affiliates**. Zerodha, Groww, and Angel One all pay ₹300 to ₹500
+per activated account. A user who discovers Fintrest, learns about investing,
+and opens a Zerodha account through us — we earn. They pay nothing.
+
+Second — **B2B data**. Our AI generates sentiment scores on Indian stocks
+from live news. Financial advisors, wealth management firms, and small brokers
+will pay for API access to that intelligence. That's a ₹10,000 to ₹50,000
+per month B2B ticket.
+
+Third — **fintech brand partnerships**. Every company trying to reach India's
+new investor class — insurance, mutual funds, credit cards — needs a trusted
+platform to speak through. That's us.
+
+No subscription. No paywall. Users get the platform free,
+we get paid by the ecosystem that wants to reach them."
+
+---
+
+## [2:35 – 2:50] WHY ME — The founder angle
 
 *(Personal now. Slow down. This is where trust is built.)*
 
 "I built this because I was this user.
 
-When I started investing in my second year of college,
-I had a Zerodha account and zero idea what to do with it.
+Second year of college. Zerodha account open. Zero idea what to do with it.
 
-I spent hours piecing things together from YouTube videos and Reddit threads —
-and I kept thinking: why isn't there a single platform that just *tells* me what's happening with Indian stocks, in plain English, with AI?
-
-I have the technical background to build it.
+I have the technical background to build the product.
 I have the personal experience to know exactly what it needs to feel like.
 
-And I'm 21 — I am the market."
+And I'm 21 — I am the market I'm building for."
 
 ---
 
-## [2:40 – 3:00] THE CLOSE — Sharp and confident
+## [2:50 – 3:05] THE CLOSE — Sharp and confident
 
 *(Slowest part of the video. Eye contact. No rush.)*
 
@@ -131,4 +156,4 @@ I'd love to build it faster with YC."
 
 ---
 
-*Script v2.0 — Product-First | Fintrest YC Application 2026*
+*Script v3.0 — Product + Business Model | Fintrest YC Application 2026*

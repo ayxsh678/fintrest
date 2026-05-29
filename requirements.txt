@@ -1,10 +1,3 @@
-cachetools==7.0.3
-fastapi==0.135.3
-feedparser==6.0.12
-pandas==2.2.3
-python-dotenv
-pydantic==2.13.0
-redis==7.4.0
 requests==2.33.1
 uvicorn==0.44.0
 yfinance==0.2.61
@@ -12,3 +5,4 @@ groq
 praw
 vaderSentiment
 beautifulsoup4
+

@@ -20,3 +20,4 @@ backend/.claude/
 .vercel
 dist/
 coverage/
+.aider*
